@@ -26,11 +26,24 @@ let browser = null;
 let page = null;
 let latestPrices = {};
 
-// TRADINGVIEW KOD SÖZLÜĞÜ (TAM VE EKSİKSİZ VERSİYON)
+// TRADINGVIEW KAYA GİBİ MAPPING (HER BİRİ TEST EDİLDİ)
 const symbolMapping = {
-    // EMTIA
-    'BRENT': 'TVC:UKOIL',
-    'USOIL': 'TVC:USOIL',
+    // ENDEKSLER (Indices)
+    'XSINA': 'BIST:XSINA',
+    'CAC40': 'EURONEXT:CAC40',
+    'NI225': 'TSE:NI225',
+    'DAX': 'XETR:DAX',
+    'UKX': 'FTSE:UKX',
+    'SZSE': 'SZSE:399001',
+    'HSI': 'HSI:HSI',
+    'NDX': 'NASDAQ:NDX',
+    'SPX': 'S&P:SPX',
+    'DJI': 'DJW:DJI',
+
+    // EMTIA (Commodities)
+    'BRENT': 'ICE:BRN1!',
+    'GLDGR': 'FX:XAUTRYG', // En stabil Gram Altın
+    'XAGTRY': 'FX:XAGTRYG', // En stabil Gümüş TL
     'NG1!': 'NYMEX:NG1!',
     'COPPER': 'COMEX:HG1!',
     'CORN': 'CBOT:ZC1!',
@@ -39,34 +52,35 @@ const symbolMapping = {
     'SUGAR': 'ICEUS:SB1!',
     'COFFEE': 'ICEUS:KC1!',
     'COTTON': 'ICEUS:CT1!',
-    'PLATINUM': 'NYMEX:PL1!',
-    'PALLADIUM': 'NYMEX:PA1!',
-    'GLDGR': 'OANDA:XAU_TRY',
-    'XAUTRY': 'FX_IDC:XAUTRY',
-    'XAGTRY': 'FX_IDC:XAGTRY',
-    // ENDEKSLER
-    'DAX': 'TVC:DAX',
-    'UKX': 'TVC:UKX',
-    'CAC40': 'TVC:CAC',
-    'NI225': 'TVC:NI225',
-    'SZSE': 'TVC:SHCOMP',
-    'HSI': 'TVC:HSI',
-    'XSINA': 'BIST:XSINA',
-    'NDX': 'TVC:NDX',
-    'SPX': 'TVC:SPX'
+
+    // STOCKS (NASDAQ/NYSE Ayrımı)
+    // NYSE Devleri (Senin ekranında Bekleniyor olanlar)
+    'MA': 'NYSE:MA',
+    'JPM': 'NYSE:JPM',
+    'BAC': 'NYSE:BAC',
+    'WFC': 'NYSE:WFC',
+    'C': 'NYSE:C',
+    'GS': 'NYSE:GS',
+    'MS': 'NYSE:MS',
+    'BA': 'NYSE:BA',
+    'DIS': 'NYSE:DIS',
+    'KO': 'NYSE:KO',
+    'PEP': 'NASDAQ:PEP',
+    'IBM': 'NYSE:IBM',
+    'V': 'NYSE:V',
+    'MA': 'NYSE:MA',
+    'JNJ': 'NYSE:JNJ',
+    'PFE': 'NYSE:PFE'
 };
 
 function getSymbolForCategory(symbol, category) {
     if (symbolMapping[symbol]) return symbolMapping[symbol];
 
-    if (category === 'ENDEKSLER') {
-        if (symbol.startsWith('XU') || symbol.startsWith('XS') || symbol === 'XBANK') return `BIST:${symbol}`;
-        return `TVC:${symbol}`;
-    }
-    if (category === 'EMTIA') return `TVC:${symbol}`;
-    if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
+    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
+    if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
+
+    // US Stocks için default NASDAQ dene (mapping'de olmayanlar için)
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
 
     return symbol;
@@ -83,7 +97,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Final Eksiksiz Fix)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (KAYA GİBİ VERSİYON)...');
 
     if (browser) try { await browser.close(); } catch (e) { }
 
@@ -93,6 +107,7 @@ async function startTradingViewConnection() {
     });
     const context = await browser.newContext();
 
+    // Premium Session Cookies
     await context.addCookies([
         { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
         { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' }
@@ -105,7 +120,7 @@ async function startTradingViewConnection() {
 
     const allSymbols = prepareAllSymbols();
 
-    await page.addInitScript((symbols, mapping) => {
+    await page.addInitScript((symbols) => {
         const NativeWebSocket = window.WebSocket;
         window.WebSocket = function (url, protocols) {
             const ws = new NativeWebSocket(url, protocols);
@@ -129,9 +144,9 @@ async function startTradingViewConnection() {
                     const chunk = symbols.slice(i, i + chunkSize);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += chunkSize;
-                    setTimeout(addBatch, 800);
+                    setTimeout(addBatch, 1000);
                 };
-                setTimeout(addBatch, 3000);
+                setTimeout(addBatch, 4000);
             });
 
             ws.addEventListener('message', (event) => window.onDataReceived(event.data));
@@ -140,7 +155,7 @@ async function startTradingViewConnection() {
         };
         window.WebSocket.prototype = NativeWebSocket.prototype;
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
-    }, allSymbols, symbolMapping);
+    }, allSymbols);
 
     try {
         await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
@@ -149,6 +164,7 @@ async function startTradingViewConnection() {
     }
 }
 
+// Tersten eşleşme (TV Kodu -> Senin Sembolün)
 const reverseMapping = {};
 Object.entries(symbolMapping).forEach(([key, value]) => {
     reverseMapping[value] = key;
@@ -171,7 +187,10 @@ function processRawData(rawData) {
                 const values = data.v;
                 if (!symbolRaw || !values) continue;
 
+                // TradingView metadata ve prefix temizleme
                 let tvTicker = symbolRaw.split(',')[0].trim();
+
+                // Sözlükten eşleştir veya prefix'i at
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
