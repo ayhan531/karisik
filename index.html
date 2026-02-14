@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ES Menkul | Canlı Fiyat Takibi</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body class="dark-theme">
+    <div id="app">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="account-info">
+                <span class="account-id">12640368</span>
+            </div>
+            <div class="logo-container">
+                <img src="https://onlinesube.esmenkul.com/assets/layout/images/logo-white.png" alt="ES MENKUL"
+                    class="main-logo"
+                    onerror="this.src='https://via.placeholder.com/150x40/011f4b/ffffff?text=ES+MENKUL'">
+            </div>
+            <div class="profit-info">
+                <span class="label">KAR</span>
+                <span class="value positive">0.00 USD</span>
+                <div id="connectionStatus" class="status-offline">🔴 BAĞLANTI YOK</div>
+            </div>
+        </header>
+
+        <!-- Tabs -->
+        <nav class="tabs">
+            <button class="tab-btn" data-tab="favoriler">FAVORİLER <span class="star">★</span></button>
+            <button class="tab-btn active" data-tab="tum-semboller">TÜM SEMBOLLER</button>
+        </nav>
+
+        <!-- Search & Filters -->
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="symbolSearch" placeholder="ARA">
+                <span class="search-icon">🔍</span>
+            </div>
+
+            <div class="market-filters" id="marketFilters">
+                <!-- Filters will be injected here -->
+            </div>
+        </div>
+
+        <!-- Price List Header -->
+        <div class="list-header">
+            <div class="col-symbol">SEMBOL</div>
+            <div class="col-price">SATIŞ</div>
+            <div class="col-spread">SPREAD</div>
+            <div class="col-change">DEĞİŞİM</div>
+        </div>
+
+        <!-- Symbol List Container -->
+        <main class="symbol-list" id="symbolList">
+            <!-- Items injected by JS -->
+        </main>
+
+        <!-- Bottom Nav -->
+        <footer class="bottom-nav">
+            <div class="nav-item active">
+                <span class="icon">📈</span>
+                <span class="label">İŞLEM</span>
+            </div>
+            <div class="nav-item">
+                <span class="icon">📋</span>
+                <span class="label">POZİSYONLAR</span>
+            </div>
+            <div class="nav-item">
+                <span class="icon">🕒</span>
+                <span class="label">GEÇMİŞ</span>
+            </div>
+            <div class="nav-item">
+                <span class="icon">👤</span>
+                <span class="label">HESAP</span>
+            </div>
+        </footer>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>
