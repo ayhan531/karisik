@@ -3,7 +3,6 @@ services:
     name: karisik
     env: node
     region: frankfurt
-    rootDir: server
     buildCommand: npm install && npx playwright install chromium
     startCommand: npm start
     envVars:

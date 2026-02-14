@@ -1,0 +1,19 @@
+{
+    "name": "karisik-tradingview-proxy",
+    "version": "1.0.0",
+    "main": "server/server.js",
+    "type": "module",
+    "scripts": {
+        "start": "node server/server.js",
+        "build": "npm install && npx playwright install chromium"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.18.2",
+        "playwright": "^1.58.2",
+        "ws": "^8.16.0"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}
