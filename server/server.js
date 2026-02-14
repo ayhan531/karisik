@@ -15,44 +15,61 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.static(path.join(__dirname, '../')));
 
-// HTTP Server
 const server = app.listen(PORT, () => {
     console.log(`🚀 Server ${PORT} portunda yayında`);
     setTimeout(startTradingViewConnection, 3000);
 });
 
-// WebSocket Server (Frontend)
 const wss = new WebSocketServer({ server });
 
 let browser = null;
 let page = null;
 let latestPrices = {};
 
-// TRADINGVIEW STABIL TICKER MAPPING
+// TRADINGVIEW KOD SÖZLÜĞÜ (Hatalı/Bekleniyor Olanlar İçin)
+const symbolMapping = {
+    // EMTIA (Kritik Düzeltmeler)
+    'BRENT': 'ICE:BRN1!',
+    'USOIL': 'TVC:USOIL',
+    'NG1!': 'NYMEX:NG1!',
+    'COPPER': 'COMEX:HG1!',
+    'CORN': 'CBOT:ZC1!',
+    'WHEAT': 'CBOT:ZW1!',
+    'SOYBEAN': 'CBOT:ZS1!',
+    'SUGAR': 'ICEUS:SB1!',
+    'COFFEE': 'ICEUS:KC1!',
+    'COTTON': 'ICEUS:CT1!',
+    'PLATINUM': 'NYMEX:PL1!',
+    'PALLADIUM': 'NYMEX:PA1!',
+    'GLDGR': 'FX:XAUTRYG',
+    // ENDEKSLER
+    'DAX': 'XETR:DAX',
+    'UKX': 'FTSE:UKX',
+    'CAC40': 'EURONEXT:CAC40',
+    'NI225': 'TSE:NI225',
+    'SZSE': 'SZSE:399001', // Shenzhen Comp
+    'HSI': 'HSI:HSI',
+    'NDX': 'NASDAQ:NDX',
+    'SPX': 'S&P:SPX'
+};
+
 function getSymbolForCategory(symbol, category) {
+    if (symbolMapping[symbol]) return symbolMapping[symbol];
+
     if (category === 'ENDEKSLER') {
-        if (symbol === 'XU100' || symbol === 'XU030' || symbol === 'XBANK' || symbol === 'XSINA') return `BIST:${symbol}`;
-        if (symbol === 'NDX' || symbol === 'SPX' || symbol === 'DJI') return `TVC:${symbol}`;
-        if (symbol === 'DAX') return 'XETR:DAX';
-        if (symbol === 'UKX') return 'FTSE:UKX';
-        if (symbol === 'CAC40') return 'EURONEXT:CAC40';
+        if (symbol.startsWith('XU') || symbol.startsWith('XS') || symbol === 'XBANK') return `BIST:${symbol}`;
         return `TVC:${symbol}`;
     }
-    if (category === 'EMTIA') {
-        if (symbol === 'BRENT') return 'ICE:BRN1!';
-        if (symbol === 'USOIL') return 'TVC:USOIL';
-        if (symbol === 'GLDGR') return 'FX:XAUTRYG'; // Gram Altın (ICE/FX en stabili)
-        if (symbol === 'XAUTRY' || symbol === 'XAGTRY') return `FX_IDC:${symbol}`;
-        if (symbol === 'NG1!') return 'NYMEX:NG1!';
-        if (symbol === 'COPPER') return 'COMEX:HG1!';
-        return `TVC:${symbol}`;
-    }
+    if (category === 'EMTIA') return `TVC:${symbol}`;
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
+    if (category === 'KRIPTO') {
+        // symbols.js'deki isme (BTCUSDT veya BTCTRY) göre prefix ata
+        return `BINANCE:${symbol}`;
+    }
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
 
-    return `BINANCE:${symbol}`;
+    return symbol;
 }
 
 function prepareAllSymbols() {
@@ -66,49 +83,30 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Optimize Mod)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Final Fix)...');
 
-    if (browser) await browser.close();
+    if (browser) try { await browser.close(); } catch (e) { }
 
-    const args = [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-infobars',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--mute-audio',
-        '--disable-blink-features=AutomationControlled'
-    ];
-
-    browser = await chromium.launch({ headless: true, args: args });
-    const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+    browser = await chromium.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
+    const context = await browser.newContext();
 
     await context.addCookies([
         { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
-        { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' },
-        { name: 'device_t', value: 'MDQ2N0J3OjA.JXVjSY6qcyTzNumI9qHDD3OcCnepyIaG3KbmPmE0Cy4', domain: '.tradingview.com', path: '/' },
-        { name: 'tv_ecuid', value: '5f98ac9a-cd0a-4198-bbde-e643744083fc', domain: '.tradingview.com', path: '/' }
+        { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' }
     ]);
 
     page = await context.newPage();
 
-    page.on('console', msg => {
-        const txt = msg.text();
-        if (txt.includes('WS-LOG:')) console.log(txt.replace('WS-LOG:', '📡'));
-    });
-
     await page.exposeFunction('onDataReceived', (data) => processRawData(data));
-    await page.exposeFunction('onBrowserReloadRequest', () => {
-        setTimeout(startTradingViewConnection, 5000);
-    });
+    await page.exposeFunction('onBrowserReloadRequest', () => { setTimeout(startTradingViewConnection, 5000); });
 
     const allSymbols = prepareAllSymbols();
 
-    await page.addInitScript((symbols) => {
+    await page.addInitScript((symbols, mapping) => {
         const NativeWebSocket = window.WebSocket;
-
         window.WebSocket = function (url, protocols) {
             const ws = new NativeWebSocket(url, protocols);
             window.tvSocket = ws;
@@ -124,38 +122,38 @@ async function startTradingViewConnection() {
                 ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
                 let i = 0;
-                const chunkSize = 50; // Hızlandırıldı (20 -> 50)
-
+                const chunkSize = 50;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
                     if (ws.readyState !== 1) return;
-
                     const chunk = symbols.slice(i, i + chunkSize);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += chunkSize;
-
-                    setTimeout(addBatch, 800); // Gecikme azaltıldı (1000 -> 800)
+                    setTimeout(addBatch, 1000);
                 };
-                setTimeout(addBatch, 3000);
+                setTimeout(addBatch, 4000);
             });
 
             ws.addEventListener('message', (event) => window.onDataReceived(event.data));
-            ws.addEventListener('close', (e) => {
-                if (e.code !== 1000) window.onBrowserReloadRequest();
-            });
-
+            ws.addEventListener('close', (e) => { if (e.code !== 1000) window.onBrowserReloadRequest(); });
             return ws;
         };
         window.WebSocket.prototype = NativeWebSocket.prototype;
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
-    }, allSymbols);
+    }, allSymbols, symbolMapping);
 
     try {
-        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
+        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
     } catch (e) {
         setTimeout(startTradingViewConnection, 10000);
     }
 }
+
+// Tersten eşleşme (TV Kodu -> Senin Sembolün)
+const reverseMapping = {};
+Object.entries(symbolMapping).forEach(([key, value]) => {
+    reverseMapping[value] = key;
+});
 
 function processRawData(rawData) {
     const regex = /~m~(\d+)~m~/g;
@@ -174,8 +172,11 @@ function processRawData(rawData) {
                 const values = data.v;
                 if (!symbolRaw || !values) continue;
 
-                // FIX: "BIST:BEKO, 1" gibi ekleri temizle.
-                let symbol = symbolRaw.split(',')[0].split(':').pop();
+                // 1. TradingView'in eklerini temizle (örn: BIST:BEKO, 1 -> BIST:BEKO)
+                let tvTicker = symbolRaw.split(',')[0].trim();
+
+                // 2. Sözlükten geri çevir veya prefix'i at
+                let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
                 if (values.lp) latestPrices[symbol].price = values.lp;
