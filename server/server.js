@@ -28,14 +28,28 @@ let browser = null;
 let page = null;
 let latestPrices = {};
 
+// DOĞRU DATA MAPPING (TRADINGVIEW PREFIXLERİ)
 function getSymbolForCategory(symbol, category) {
-    if (category === 'KRIPTO') return `BINANCE:${symbol}USDT`;
-    if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
+    if (category === 'ENDEKSLER') {
+        if (symbol.startsWith('XU') || symbol.startsWith('XS') || symbol === 'XBANK') return `BIST:${symbol}`;
+        if (symbol === 'NDX' || symbol === 'SPX' || symbol === 'DJI') return `TVC:${symbol}`;
+        if (symbol === 'DAX' || symbol === 'UKX' || symbol === 'CAC40') return `TVC:${symbol}`;
+        if (symbol === 'NI225' || symbol === 'SZSE' || symbol === 'HSI') return `TVC:${symbol}`;
+        return `TVC:${symbol}`;
+    }
+    if (category === 'EMTIA') {
+        if (symbol === 'BRENT' || symbol === 'USOIL') return `TVC:${symbol}`;
+        if (symbol === 'XAUUSD' || symbol === 'XAGUSD') return `FX_IDC:${symbol}`;
+        if (symbol === 'GLDGR') return `BIST:${symbol}`;
+        if (symbol.includes('GRAM')) return `BIST:GLDGR`;
+        return `TVC:${symbol}`;
+    }
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'ENDEKSLER') return `TVC:${symbol}`;
-    if (category === 'EMTIA') return `TVC:${symbol}`;
+    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
+    if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
-    return `BINANCE:${symbol}USDT`;
+
+    return `BINANCE:${symbol}USDT`; // Fallback
 }
 
 function prepareAllSymbols() {
@@ -99,7 +113,6 @@ async function startTradingViewConnection() {
     await page.route('**/*', route => {
         const url = route.request().url();
         const type = route.request().resourceType();
-        // Image, Media vb engelle ama JS ve XHR geçsin
         if (type === 'image' || type === 'media' || type === 'font') return route.abort();
         return route.continue();
     });
@@ -116,27 +129,21 @@ async function startTradingViewConnection() {
     });
 
     // 🥷 SOKET HIJACK SCRIPT 🥷
-    // Sayfa yüklenmeden önce bu script çalışacak ve WebSocket'i ele geçirecek.
     const allSymbols = prepareAllSymbols();
 
     await page.addInitScript((symbols) => {
         console.log('WS-LOG: Hijack Script Yüklendi.');
 
-        // Orijinal WebSocket'i sakla
         const NativeWebSocket = window.WebSocket;
 
-        // Custom WebSocket Proxy'si
         window.WebSocket = function (url, protocols) {
             console.log('WS-LOG: TV Soket Açıyor -> ' + url);
-
-            // Gerçek soketi oluştur
             const ws = new NativeWebSocket(url, protocols);
-            window.tvSocket = ws; // Global erişim için
+            window.tvSocket = ws;
 
             ws.addEventListener('open', () => {
                 console.log('WS-LOG: TV Soketi AÇILDI! 🟢 (Hooked)');
 
-                // Hemen kendi Session'ımızı enjekte ediyoruz
                 const constructMessage = (func, paramList) => {
                     const json = JSON.stringify({ m: func, p: paramList });
                     return `~m~${json.length}~m~${json}`;
@@ -146,7 +153,6 @@ async function startTradingViewConnection() {
                 ws.send(constructMessage('quote_create_session', [sessionId]));
                 ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
-                // Sembolleri Yavaşça Ekle
                 console.log('WS-LOG: Semboller ekleniyor...');
                 let i = 0;
                 const chunkSize = 20;
@@ -162,17 +168,12 @@ async function startTradingViewConnection() {
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += chunkSize;
 
-                    setTimeout(addBatch, 1000); // 1 saniye ara ile
+                    setTimeout(addBatch, 1000);
                 };
-
-                // Biraz bekle sonra başla (TV kendi sessionını kursun)
                 setTimeout(addBatch, 3000);
             });
 
-            // Gelen mesajları dinle
-            ws.addEventListener('message', (event) => {
-                window.onDataReceived(event.data);
-            });
+            ws.addEventListener('message', (event) => window.onDataReceived(event.data));
 
             ws.addEventListener('close', (e) => {
                 console.log('WS-LOG: Soket Koptu 🔴 Kod: ' + e.code);
@@ -182,7 +183,6 @@ async function startTradingViewConnection() {
             return ws;
         };
 
-        // Prototip zincirini koru (TV anlamasın diye)
         window.WebSocket.prototype = NativeWebSocket.prototype;
         window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
@@ -196,9 +196,6 @@ async function startTradingViewConnection() {
         console.log('⏳ TradingView Ana Sayfası Yükleniyor...');
         await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
         console.log('✅ Sayfa Yüklendi. Hijack bekleniyor...');
-
-        // Hiçbir şey yapmamıza gerek yok, initScript her şeyi halledecek.
-
     } catch (e) {
         console.error('❌ Hata:', e.message);
         setTimeout(startTradingViewConnection, 10000);
@@ -224,7 +221,9 @@ function processRawData(rawData) {
 
                 if (!symbolRaw || !values) continue;
 
-                const symbol = normalizeSymbol(symbolRaw);
+                // Sadece Prefix'i kaldır (BIST:, TVC: vb.)
+                // Suffix (USDT, TRY) kalsın ki symbols.js ile eşleşsin.
+                const symbol = symbolRaw.split(':').pop();
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
 
@@ -248,15 +247,6 @@ function processRawData(rawData) {
             }
         } catch (e) { }
     }
-}
-
-function normalizeSymbol(tvSymbol) {
-    if (!tvSymbol) return '';
-    return tvSymbol.split(':').pop()
-        .replace(/USDT\.P$/, '')
-        .replace(/USDT$/, '')
-        .replace(/USD$/, '')
-        .replace(/TRY$/, '');
 }
 
 wss.on('connection', (ws) => {
