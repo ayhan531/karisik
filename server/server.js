@@ -12,10 +12,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// KULLANICI AYARLARI (PREMIUM İÇİN BURAYA SESSION ID YAZILABİLİR)
+// KULLANICI AYARLARI (PREMIUM İÇİN BURAYA SESSION ID YAZILABİLİR VEYA ENV'den OKUNUR)
 // Boş bırakılırsa "Akıllı Misafir Modu" (Token Çalma) devreye girer.
-const TRADINGVIEW_SESSION_ID = ''; // Örn: 'owdl1knxegxizb3jz4jub973...'
-const TRADINGVIEW_SESSION_SIGN = ''; // Örn: 'v3:vTg6tTsF...'
+const TRADINGVIEW_SESSION_ID = process.env.TV_SESSION_ID || '';
+const TRADINGVIEW_SESSION_SIGN = process.env.TV_SESSION_SIGN || '';
 
 app.use(cors());
 app.use(express.static(path.join(__dirname, '../')));
@@ -33,7 +33,6 @@ let browser = null;
 let page = null;
 let latestPrices = {};
 
-// Sembol Mapping
 function getSymbolForCategory(symbol, category) {
     if (category === 'KRIPTO') {
         const manualMap = {
@@ -51,7 +50,7 @@ function getSymbolForCategory(symbol, category) {
     if (category === 'EMTIA') return `TVC:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
 
-    return `BINANCE:${symbol}USDT`; // default
+    return `BINANCE:${symbol}USDT`;
 }
 
 function prepareAllSymbols() {
@@ -64,10 +63,7 @@ function prepareAllSymbols() {
     return [...new Set(formattedSymbols)];
 }
 
-// ---------------------------------------------------------
-// CORE LOGIC: Permanent Token Extraction Strategy
-// ---------------------------------------------------------
-
+// PREMIUM BAĞLANTI MANTIĞI
 async function startTradingViewConnection() {
     console.log('🌐 TradingView Kalıcı Bağlantı Başlatılıyor...');
 
@@ -107,16 +103,14 @@ async function startTradingViewConnection() {
 
     page = await context.newPage();
 
-    // RAM Tasarrufu: Sadece kritik kaynaklar
+    // RAM Tasarrufu
     await page.route('**/*', route => {
         const url = route.request().url();
         const type = route.request().resourceType();
 
-        // WebSocket ve JS gerekli
         if (url.includes('socket.io') || type === 'script' || type === 'xhr' || type === 'fetch') {
             return route.continue();
         }
-        // Resim, Font, CSS, Medya engelle
         if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') {
             return route.abort();
         }
@@ -136,34 +130,22 @@ async function startTradingViewConnection() {
 
     try {
         console.log('⏳ TradingView Ana Sayfası yükleniyor (Token Çalmak için)...');
-
-        // Ana sayfayı yükle (Chart sayfası bazen ağır olur, ana sayfa daha hızlı token verir)
-        // Ya da direkt chart sayfası
         await page.goto('https://www.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
 
         console.log('✅ Sayfa yüklendi. Token aranıyor...');
 
-        // Token'ın sayfada oluşmasını bekle (Evaluate içinde)
         const allSymbols = prepareAllSymbols();
         console.log(`📊 Hedef Sembol Sayısı: ${allSymbols.length}`);
 
         await page.evaluate((symbols) => {
             console.log('WS-LOG: Script Enjekte Edildi.');
-
-            // Helper: Backoff sleep
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
             const waitForToken = async () => {
                 let attempts = 0;
                 while (attempts < 20) {
-                    // TradingView global objesinden token'ı çal
-                    // Genelde window.user.auth_token veya window.TV.curr_user_id vb. yerlerde olur
-                    if (window.user && window.user.auth_token) {
-                        return window.user.auth_token;
-                    }
-                    if (window.TV && window.TV.AUTH_TOKEN) {
-                        return window.TV.AUTH_TOKEN;
-                    }
+                    if (window.user && window.user.auth_token) return window.user.auth_token;
+                    if (window.TV && window.TV.AUTH_TOKEN) return window.TV.AUTH_TOKEN;
                     await sleep(500);
                     attempts++;
                 }
@@ -174,7 +156,6 @@ async function startTradingViewConnection() {
                 const token = await waitForToken();
                 console.log('WS-LOG: Çalınan Token: ' + (token ? 'BAŞARILI ✅' : 'BULUNAMADI ❌ (Fetch denenecek)'));
 
-                // Eğer sayfadan bulamazsak fetch deneriz
                 let finalToken = token;
                 if (!finalToken) {
                     try {
@@ -182,15 +163,15 @@ async function startTradingViewConnection() {
                         const d = await r.json();
                         finalToken = d.userAuthToken;
                     } catch (e) {
-                        console.log('WS-LOG: Fetch hatası: ' + e.message);
-                        finalToken = 'unauthorized_user_token'; // Son çare
+                        console.log('WS-LOG: Fetch hatası, unauthorized moda geçiliyor.');
+                        finalToken = 'unauthorized_user_token';
                     }
                 }
 
                 console.log('WS-LOG: Bağlantı Tokeni: ' + finalToken);
 
-                // WebSocket Başlat
-                const ws = new WebSocket('wss://data.tradingview.com/socket.io/?EIO=3&transport=websocket', 'json');
+                // WebSocket Başlat (STANDART URL)
+                const ws = new WebSocket('wss://data.tradingview.com/socket.io/?EIO=3&transport=websocket');
                 window.tvSocket = ws;
 
                 const constructMessage = (func, paramList) => {
@@ -201,26 +182,21 @@ async function startTradingViewConnection() {
                 ws.onopen = async () => {
                     console.log('WS-LOG: Socket AÇILDI 🟢');
 
-                    // Auth
                     ws.send(constructMessage('set_auth_token', [finalToken]));
 
-                    // Session
                     const sessionId = 'qs_' + Math.random().toString(36).substring(7);
                     ws.send(constructMessage('quote_create_session', [sessionId]));
                     ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
-                    // Add Symbols (Yavaş yavaş ekle - Rate Limit Koruması)
-                    // Hepsini birden abanma
-                    const chunkSize = 20; // Daha küçük chunk
+                    const chunkSize = 20;
                     for (let i = 0; i < symbols.length; i += chunkSize) {
                         const chunk = symbols.slice(i, i + chunkSize);
                         if (ws.readyState !== 1) break;
                         ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                        await sleep(300); // 300ms bekle
+                        await sleep(300);
                     }
                     console.log('WS-LOG: Veri akışı başlatıldı!');
 
-                    // Keep-alive
                     setInterval(() => {
                         if (ws.readyState === 1) ws.send('~m~0~m~');
                     }, 20000);
@@ -228,9 +204,8 @@ async function startTradingViewConnection() {
 
                 ws.onmessage = (e) => window.onDataReceived(e.data);
 
-                ws.onclose = () => {
-                    console.log('WS-LOG: Socket Koptu 🔴 Yeniden bağlanılıyor...');
-                    // Sayfayı yeniletmek için Node.js'e sinyal gönder
+                ws.onclose = (event) => {
+                    console.log('WS-LOG: Socket Koptu 🔴 Kod: ' + event.code);
                     window.onBrowserReloadRequest();
                 };
 
@@ -247,7 +222,6 @@ async function startTradingViewConnection() {
     }
 }
 
-// Data Processing
 function processRawData(rawData) {
     const regex = /~m~(\d+)~m~/g;
     let match;
