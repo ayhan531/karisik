@@ -29,22 +29,12 @@ let page = null;
 let latestPrices = {};
 
 function getSymbolForCategory(symbol, category) {
-    if (category === 'KRIPTO') {
-        const manualMap = {
-            'BTC': 'BINANCE:BTCUSDT',
-            'ETH': 'BINANCE:ETHUSDT',
-            'SOL': 'BINANCE:SOLUSDT',
-            'AVAX': 'BINANCE:AVAXUSDT',
-            'XRP': 'BINANCE:XRPUSDT',
-        };
-        return manualMap[symbol] || `BINANCE:${symbol}USDT`;
-    }
+    if (category === 'KRIPTO') return `BINANCE:${symbol}USDT`;
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
     if (category === 'ENDEKSLER') return `TVC:${symbol}`;
     if (category === 'EMTIA') return `TVC:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
-
     return `BINANCE:${symbol}USDT`;
 }
 
@@ -58,9 +48,9 @@ function prepareAllSymbols() {
     return [...new Set(formattedSymbols)];
 }
 
-// PREMIUM BAĞLANTI MANTIĞI
+// PREMIUM BAĞLANTI MANTIĞI (STABLE)
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Premium Bağlantısı Başlatılıyor (Yavaş Mod)...');
+    console.log('🌐 TradingView Premium Bağlantısı Başlatılıyor (Stabil Mod)...');
 
     if (browser) await browser.close();
 
@@ -70,7 +60,6 @@ async function startTradingViewConnection() {
         '--disable-infobars',
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
-        // '--disable-gpu', 
         '--mute-audio',
         '--disable-blink-features=AutomationControlled'
     ];
@@ -80,7 +69,6 @@ async function startTradingViewConnection() {
         args: args
     });
 
-    // BROWSER AYARLARI (User-Agent ÇOK ÖNEMLİ)
     const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
         viewport: { width: 1440, height: 900 },
@@ -94,7 +82,7 @@ async function startTradingViewConnection() {
         }
     });
 
-    // KULLANICI ÇEREZLERİ (Kalıcı Oturum İçin)
+    // KULLANICI ÇEREZLERİ (Kalıcı Oturum)
     await context.addCookies([
         { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
         { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' },
@@ -108,12 +96,8 @@ async function startTradingViewConnection() {
     await page.route('**/*', route => {
         const url = route.request().url();
         const type = route.request().resourceType();
-        if (url.includes('socket.io') || type === 'script' || type === 'xhr' || type === 'fetch') {
-            return route.continue();
-        }
-        if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') {
-            return route.abort();
-        }
+        if (url.includes('socket.io') || type === 'script' || type === 'xhr' || type === 'fetch') return route.continue();
+        if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') return route.abort();
         return route.continue();
     });
 
@@ -125,15 +109,14 @@ async function startTradingViewConnection() {
     await page.exposeFunction('onDataReceived', (data) => processRawData(data));
     await page.exposeFunction('onBrowserReloadRequest', () => {
         console.log('♻️ Bağlantı koptu, yeniden deneniyor...');
-        setTimeout(startTradingViewConnection, 5000); // 5sn bekle
+        setTimeout(startTradingViewConnection, 5000);
     });
 
     try {
         console.log('⏳ TradingView Ana Sayfası Yükleniyor...');
-        // Chart yerine ana sayfadan gidelim, belki daha hafiftir
         await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
 
-        console.log('✅ Sayfa Açıldı. Token ve Bağlantı Bekleniyor...');
+        console.log('✅ Sayfa Açıldı. Bağlantı kuruyoruz...');
 
         const allSymbols = prepareAllSymbols();
         console.log(`📊 Hedef: ${allSymbols.length} Sembol`);
@@ -145,7 +128,6 @@ async function startTradingViewConnection() {
             const waitForToken = async () => {
                 let attempts = 0;
                 while (attempts < 20) {
-                    // Kullanıcı tokenı
                     if (window.user && window.user.auth_token) return window.user.auth_token;
                     await sleep(500);
                     attempts++;
@@ -160,16 +142,14 @@ async function startTradingViewConnection() {
                 let finalToken = token;
                 if (!finalToken) {
                     try {
-                        const r = await fetch('/auth/token');
+                        const r = await fetch('/auth/token'); // Fetch ile son şans
                         const d = await r.json();
                         finalToken = d.userAuthToken;
                     } catch (e) { finalToken = 'unauthorized_user_token'; }
                 }
 
-                // WebSocket (PRO DATA DENEMESİ)
-                // data.tradingview.com -> Genelde herkese açık
-                // prodata.tradingview.com -> Premium için (Daha stabil olabilir)
-                const wsUrl = 'wss://prodata.tradingview.com/socket.io/?EIO=3&transport=websocket';
+                // WebSocket (STABIL: data.tradingview.com)
+                const wsUrl = 'wss://data.tradingview.com/socket.io/?EIO=3&transport=websocket';
                 console.log('WS-LOG: Bağlanılıyor -> ' + wsUrl);
 
                 const ws = new WebSocket(wsUrl);
@@ -189,23 +169,20 @@ async function startTradingViewConnection() {
                     ws.send(constructMessage('quote_create_session', [sessionId]));
                     ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
-                    // ÇOK YAVAŞ EKLEME (Rate Limit Koruması)
-                    // Her 1 saniyede sadece 20 sembol gönder
+                    // YAVAŞ EKLEME (Rate Limit) -> Her 1 saniyede 20 sembol
                     const chunkSize = 20;
                     for (let i = 0; i < symbols.length; i += chunkSize) {
                         const chunk = symbols.slice(i, i + chunkSize);
 
                         if (ws.readyState !== 1) {
-                            console.log('WS-LOG: Soket hazır değil, durduruluyor...');
+                            console.log('WS-LOG: Soket koptu, tekrar deneniyor...');
                             break;
                         }
 
                         ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-
-                        // ÖNEMLİ: Hızlı istek atmamak için bekle
                         await sleep(1000);
                     }
-                    console.log('WS-LOG: Tüm semboller sıraya alındı ve veri akıyor!');
+                    console.log('WS-LOG: Tüm semboller istendi!');
 
                     setInterval(() => {
                         if (ws.readyState === 1) ws.send('~m~0~m~');
