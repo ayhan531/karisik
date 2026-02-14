@@ -1,7 +1,6 @@
 services:
-  # Backend API Server
   - type: web
-    name: karisik-server
+    name: karisik
     env: node
     region: frankfurt
     rootDir: server
@@ -10,17 +9,3 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
-
-  # Frontend Static Site  
-  - type: web
-    name: karisik-frontend
-    env: static
-    region: frankfurt
-    buildCommand: echo "No build needed"
-    staticPublishPath: ./
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html

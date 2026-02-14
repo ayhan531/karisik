@@ -23,7 +23,13 @@ class TradingApp {
     connectToProxy() {
         console.log('🔌 Proxy sunucusuna bağlanılıyor...');
 
-        this.ws = new WebSocket('ws://localhost:3002');
+        // Production/Development dynamic URL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}`;
+
+        console.log(`📡 WebSocket Adresi: ${wsUrl}`);
+        this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
             console.log('✅ Proxy bağlantısı başarılı! Gerçek veriler akıyor...');

@@ -3,12 +3,20 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { symbolsData } from '../symbols.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = 3001;
+// Serve static frontend files
+app.use(express.static(path.join(__dirname, '..')));
+
+const PORT = process.env.PORT || 3001;
 const clients = new Set();
 const priceCache = new Map();
 
@@ -244,8 +252,31 @@ function broadcastToClients(message) {
     });
 }
 
-// WebSocket server (client'lar için)
-const wss = new WebSocketServer({ port: 3002 });
+// REST endpoint
+app.get('/api/prices', (req, res) => {
+    const prices = {};
+    priceCache.forEach((value, key) => {
+        prices[key] = value;
+    });
+    res.json(prices);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    console.log('\n🛑 Server kapatılıyor...');
+    if (browser) await browser.close();
+    process.exit(0);
+});
+
+// Create HTTP server and attach WebSocket
+const httpServer = app.listen(PORT, async () => {
+    console.log(`🚀 Server çalışıyor: http://localhost:${PORT}`);
+    console.log(`🔌 WebSocket: ws://localhost:${PORT}`);
+    await connectToTradingView();
+});
+
+// Attach WebSocket to HTTP server
+const wss = new WebSocketServer({ server: httpServer });
 
 wss.on('connection', (ws) => {
     console.log('👤 Yeni client bağlandı');
@@ -263,26 +294,4 @@ wss.on('connection', (ws) => {
         console.log('👤 Client ayrıldı');
         clients.delete(ws);
     });
-});
-
-// REST endpoint
-app.get('/api/prices', (req, res) => {
-    const prices = {};
-    priceCache.forEach((value, key) => {
-        prices[key] = value;
-    });
-    res.json(prices);
-});
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    console.log('\n🛑 Server kapatılıyor...');
-    if (browser) await browser.close();
-    process.exit(0);
-});
-
-app.listen(PORT, async () => {
-    console.log(`🚀 Proxy server çalışıyor: http://localhost:${PORT}`);
-    console.log(`🔌 WebSocket server: ws://localhost:3002`);
-    await connectToTradingView();
 });
