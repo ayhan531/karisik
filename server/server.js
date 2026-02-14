@@ -25,6 +25,7 @@ const wss = new WebSocketServer({ server });
 let browser = null;
 let page = null;
 let latestPrices = {};
+let usdTryRate = 34.20; // Default, anlık güncellenecek
 
 // 🎯 KESİN VE SON NOKTA ATIŞI MAPPING
 const symbolMapping = {
@@ -45,19 +46,33 @@ const symbolMapping = {
     'GLDGR': 'FX_IDC:XAUTRYG',
     'XAUTRY': 'FX_IDC:XAUTRY',
     'XAGTRY': 'FX_IDC:XAGTRY',
+    'USOIL': 'TVC:USOIL',
+    'NG1!': 'NYMEX:NG1!',
+    'COPPER': 'COMEX:HG1!',
+    'GOLD': 'TVC:GOLD',
+    'SILVER': 'TVC:SILVER',
 
-    // BIST HİSSELERİ 
+    // BIST HİSSELERİ (Fix)
     'TEKFEN': 'BIST:TKFEN',
     'KOZAA': 'BIST:KOZAA',
-    'BEKO': 'BIST:ARCLK', // Fix: Beko hissesi BIST'te ARCLK koduyla işlem görür
+    'BEKO': 'BIST:ARCLK',
+
+    // KRIPTO (USDT Çiftleri - Kurla TL'ye dönecekler)
+    'MKRTRY': 'BINANCE:MKRUSDT',
+    'FTMTRY': 'BINANCE:FTMUSDT',
+    'EOSTRY': 'BINANCE:EOSUSDT',
+    'FLOWTRY': 'BINANCE:FLOWUSDT',
+    'KAVATRY': 'BINANCE:KAVAUSDT',
+    'QNTTRY': 'BINANCE:QNTUSDT',
+    'FXSTRY': 'BINANCE:FXSUSDT',
+    'SSVTRY': 'BINANCE:SSVUSDT',
+    'RUNETRY': 'BINANCE:RUNEUSDT'
 };
 
-// NYSE HİSSELERİ (Hatalı Nasdaq eşleşmelerini önlemek için)
 const nyseStocks = [
     'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'MCD',
     'NKE', 'WMT', 'TGT', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX',
     'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM'
-    // PEP (Pepsi) ve SBUX (Starbucks) NASDAQ'tadır.
 ];
 
 function getSymbolForCategory(symbol, category) {
@@ -72,7 +87,7 @@ function getSymbolForCategory(symbol, category) {
 }
 
 function prepareAllSymbols() {
-    const formattedSymbols = [];
+    const formattedSymbols = ['FX_IDC:USDTRY']; // Her zaman USD kurunu çek
     Object.entries(symbolsData).forEach(([category, symbols]) => {
         symbols.forEach(sym => { formattedSymbols.push(getSymbolForCategory(sym, category)); });
     });
@@ -80,7 +95,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (ULTRA FINAL FIX)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (TL DÖNÜŞÜM MOTORU V1)...');
     if (browser) try { await browser.close(); } catch (e) { }
 
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -112,9 +127,9 @@ async function startTradingViewConnection() {
                 let i = 0;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
-                    const chunk = symbols.slice(i, i + 30);
+                    const chunk = symbols.slice(i, i + 35);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                    i += 30;
+                    i += 35;
                     setTimeout(addBatch, 1500);
                 };
                 setTimeout(addBatch, 5000);
@@ -152,19 +167,47 @@ function processRawData(rawData) {
                 let tvTicker = symbolRaw.split(',')[0].trim();
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
+                // Kur Güncelleme
+                if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
+                    usdTryRate = values.lp;
+                }
+
+                // Normalizasyon ve TL Dönüşümü
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
-                if (symbol === 'ARCLK') symbol = 'BEKO'; // BEKO olarak geri gönder
+                if (symbol === 'ARCLK') symbol = 'BEKO';
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
                 if (symbol === '399001') symbol = 'SZSE';
 
+                let finalPrice = values.lp;
+
+                // 💰 TL DÖNÜŞÜM MANTIĞI 💰
+                if (finalPrice) {
+                    // 1. Kripto USDT'den TRY'ye çevrim
+                    if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
+                    // 2. Amerikan Hisseleri (STOCKS) -> TL
+                    else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
+                    // 3. Global Emtialar (USD olanlar) -> TL
+                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
+                }
+
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
-                if (values.lp) latestPrices[symbol].price = values.lp;
+                if (finalPrice) latestPrices[symbol].price = finalPrice;
                 if (values.chp) latestPrices[symbol].changePercent = values.chp;
 
                 if (latestPrices[symbol].price) {
                     const broadcastMsg = JSON.stringify({
                         type: 'price_update',
-                        data: { symbol: symbol, price: latestPrices[symbol].price, changePercent: latestPrices[symbol].changePercent }
+                        data: {
+                            symbol: symbol,
+                            price: latestPrices[symbol].price,
+                            changePercent: latestPrices[symbol].changePercent
+                        }
                     });
                     wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                 }
