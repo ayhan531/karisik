@@ -121,12 +121,13 @@ async function connectToTradingView() {
 
     // Daha hızlı yüklenen bir sayfa kullan ve hata olursa logla
     try {
-        console.log('⏳ Sayfa yükleniyor...');
-        await page.goto('https://www.tradingview.com/markets/cryptocurrencies/', {
+        console.log('⏳ TradingView Grafik Sayfası yükleniyor...');
+        // Generic Chart sayfası her türlü veriyi çeker (BIST, NASDAQ, FX dahil)
+        await page.goto('https://www.tradingview.com/chart/?symbol=BINANCE:BTCUSDT', {
             timeout: 60000,
             waitUntil: 'domcontentloaded'
         });
-        console.log('✅ Sayfa başarıyla yüklendi!');
+        console.log('✅ Grafik Sayfası başarıyla yüklendi!');
     } catch (e) {
         console.error('⚠️ Sayfa tam yüklenemedi ama WebSocket dinleniyor. Hata:', e.message);
         // Sayfa başlığını logla (belki 403 veya Cloudflare sayfasıdır)
