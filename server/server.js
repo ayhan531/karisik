@@ -33,7 +33,7 @@ const symbolMapping = {
     'CAC40': 'TVC:CAC40',
     'NI225': 'TVC:NI225',
     'DJI': 'TVC:DJI',
-    'SZSE': 'SZSE:399001',    // Fix: SZSE Component Index
+    'SZSE': 'SZSE:399001',
     'DAX': 'TVC:DAX',
     'UKX': 'TVC:UKX',
     'HSI': 'TVC:HSI',
@@ -48,14 +48,16 @@ const symbolMapping = {
 
     // BIST HİSSELERİ 
     'TEKFEN': 'BIST:TKFEN',
-    'KOZAA': 'BIST:KOZAA'
+    'KOZAA': 'BIST:KOZAA',
+    'BEKO': 'BIST:ARCLK', // Fix: Beko hissesi BIST'te ARCLK koduyla işlem görür
 };
 
 // NYSE HİSSELERİ (Hatalı Nasdaq eşleşmelerini önlemek için)
 const nyseStocks = [
-    'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'PEP', 'MCD',
+    'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'MCD',
     'NKE', 'WMT', 'TGT', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX',
-    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM' // ORCL ve CRM eklendi
+    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM'
+    // PEP (Pepsi) ve SBUX (Starbucks) NASDAQ'tadır.
 ];
 
 function getSymbolForCategory(symbol, category) {
@@ -78,7 +80,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (FINAL OPERASYON V3)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (ULTRA FINAL FIX)...');
     if (browser) try { await browser.close(); } catch (e) { }
 
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -106,11 +108,11 @@ async function startTradingViewConnection() {
                 };
                 const sessionId = 'qs_' + Math.random().toString(36).substring(7);
                 ws.send(constructMessage('quote_create_session', [sessionId]));
-                ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name', 'short_name']));
+                ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
                 let i = 0;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
-                    const chunk = symbols.slice(i, i + 30); // Daha güvenli chunk size
+                    const chunk = symbols.slice(i, i + 30);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += 30;
                     setTimeout(addBatch, 1500);
@@ -151,8 +153,9 @@ function processRawData(rawData) {
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
+                if (symbol === 'ARCLK') symbol = 'BEKO'; // BEKO olarak geri gönder
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
-                if (symbol === '399001') symbol = 'SZSE'; // SZSE Geri Dönüş Fix
+                if (symbol === '399001') symbol = 'SZSE';
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
                 if (values.lp) latestPrices[symbol].price = values.lp;
