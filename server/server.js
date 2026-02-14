@@ -48,9 +48,12 @@ function prepareAllSymbols() {
     return [...new Set(formattedSymbols)];
 }
 
-// PREMIUM BAĞLANTI MANTIĞI (STABLE)
+// ---------------------------------------------------------
+// CORE LOGIC: SOCKET HIJACKING (The Ultimate Method)
+// ---------------------------------------------------------
+
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Premium Bağlantısı Başlatılıyor (Stabil Mod)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Hijack Modu)...');
 
     if (browser) await browser.close();
 
@@ -96,8 +99,8 @@ async function startTradingViewConnection() {
     await page.route('**/*', route => {
         const url = route.request().url();
         const type = route.request().resourceType();
-        if (url.includes('socket.io') || type === 'script' || type === 'xhr' || type === 'fetch') return route.continue();
-        if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') return route.abort();
+        // Image, Media vb engelle ama JS ve XHR geçsin
+        if (type === 'image' || type === 'media' || type === 'font') return route.abort();
         return route.continue();
     });
 
@@ -112,96 +115,89 @@ async function startTradingViewConnection() {
         setTimeout(startTradingViewConnection, 5000);
     });
 
-    try {
-        console.log('⏳ TradingView Ana Sayfası Yükleniyor...');
-        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
+    // 🥷 SOKET HIJACK SCRIPT 🥷
+    // Sayfa yüklenmeden önce bu script çalışacak ve WebSocket'i ele geçirecek.
+    const allSymbols = prepareAllSymbols();
 
-        console.log('✅ Sayfa Açıldı. Bağlantı kuruyoruz...');
+    await page.addInitScript((symbols) => {
+        console.log('WS-LOG: Hijack Script Yüklendi.');
 
-        const allSymbols = prepareAllSymbols();
-        console.log(`📊 Hedef: ${allSymbols.length} Sembol`);
+        // Orijinal WebSocket'i sakla
+        const NativeWebSocket = window.WebSocket;
 
-        await page.evaluate((symbols) => {
-            console.log('WS-LOG: Script Başlatıldı.');
-            const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        // Custom WebSocket Proxy'si
+        window.WebSocket = function (url, protocols) {
+            console.log('WS-LOG: TV Soket Açıyor -> ' + url);
 
-            const waitForToken = async () => {
-                let attempts = 0;
-                while (attempts < 20) {
-                    if (window.user && window.user.auth_token) return window.user.auth_token;
-                    await sleep(500);
-                    attempts++;
-                }
-                return null;
-            };
+            // Gerçek soketi oluştur
+            const ws = new NativeWebSocket(url, protocols);
+            window.tvSocket = ws; // Global erişim için
 
-            const initSocket = async () => {
-                const token = await waitForToken();
-                console.log('WS-LOG: Token Durumu: ' + (token ? '✅ ALINDI' : '❌ BULUNAMADI'));
+            ws.addEventListener('open', () => {
+                console.log('WS-LOG: TV Soketi AÇILDI! 🟢 (Hooked)');
 
-                let finalToken = token;
-                if (!finalToken) {
-                    try {
-                        const r = await fetch('/auth/token'); // Fetch ile son şans
-                        const d = await r.json();
-                        finalToken = d.userAuthToken;
-                    } catch (e) { finalToken = 'unauthorized_user_token'; }
-                }
-
-                // WebSocket (STABIL: data.tradingview.com)
-                const wsUrl = 'wss://data.tradingview.com/socket.io/?EIO=3&transport=websocket';
-                console.log('WS-LOG: Bağlanılıyor -> ' + wsUrl);
-
-                const ws = new WebSocket(wsUrl);
-                window.tvSocket = ws;
-
+                // Hemen kendi Session'ımızı enjekte ediyoruz
                 const constructMessage = (func, paramList) => {
                     const json = JSON.stringify({ m: func, p: paramList });
                     return `~m~${json.length}~m~${json}`;
                 };
 
-                ws.onopen = async () => {
-                    console.log('WS-LOG: SOKET BAĞLANDI! 🟢');
+                const sessionId = 'qs_' + Math.random().toString(36).substring(7);
+                ws.send(constructMessage('quote_create_session', [sessionId]));
+                ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
-                    ws.send(constructMessage('set_auth_token', [finalToken]));
+                // Sembolleri Yavaşça Ekle
+                console.log('WS-LOG: Semboller ekleniyor...');
+                let i = 0;
+                const chunkSize = 20;
 
-                    const sessionId = 'qs_' + Math.random().toString(36).substring(7);
-                    ws.send(constructMessage('quote_create_session', [sessionId]));
-                    ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
-
-                    // YAVAŞ EKLEME (Rate Limit) -> Her 1 saniyede 20 sembol
-                    const chunkSize = 20;
-                    for (let i = 0; i < symbols.length; i += chunkSize) {
-                        const chunk = symbols.slice(i, i + chunkSize);
-
-                        if (ws.readyState !== 1) {
-                            console.log('WS-LOG: Soket koptu, tekrar deneniyor...');
-                            break;
-                        }
-
-                        ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                        await sleep(1000);
+                const addBatch = () => {
+                    if (i >= symbols.length) {
+                        console.log('WS-LOG: Tüm semboller eklendi!');
+                        return;
                     }
-                    console.log('WS-LOG: Tüm semboller istendi!');
+                    if (ws.readyState !== 1) return;
 
-                    setInterval(() => {
-                        if (ws.readyState === 1) ws.send('~m~0~m~');
-                    }, 20000);
+                    const chunk = symbols.slice(i, i + chunkSize);
+                    ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
+                    i += chunkSize;
+
+                    setTimeout(addBatch, 1000); // 1 saniye ara ile
                 };
 
-                ws.onmessage = (e) => window.onDataReceived(e.data);
+                // Biraz bekle sonra başla (TV kendi sessionını kursun)
+                setTimeout(addBatch, 3000);
+            });
 
-                ws.onclose = (event) => {
-                    console.log('WS-LOG: Socket Koptu 🔴 Kod: ' + event.code);
-                    window.onBrowserReloadRequest();
-                };
+            // Gelen mesajları dinle
+            ws.addEventListener('message', (event) => {
+                window.onDataReceived(event.data);
+            });
 
-                ws.onerror = (e) => console.log('WS-LOG: Socket Hatası');
-            };
+            ws.addEventListener('close', (e) => {
+                console.log('WS-LOG: Soket Koptu 🔴 Kod: ' + e.code);
+                if (e.code !== 1000) window.onBrowserReloadRequest();
+            });
 
-            initSocket();
+            return ws;
+        };
 
-        }, allSymbols);
+        // Prototip zincirini koru (TV anlamasın diye)
+        window.WebSocket.prototype = NativeWebSocket.prototype;
+        window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+        window.WebSocket.OPEN = NativeWebSocket.OPEN;
+        window.WebSocket.CLOSING = NativeWebSocket.CLOSING;
+        window.WebSocket.CLOSED = NativeWebSocket.CLOSED;
+
+    }, allSymbols);
+
+
+    try {
+        console.log('⏳ TradingView Ana Sayfası Yükleniyor...');
+        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
+        console.log('✅ Sayfa Yüklendi. Hijack bekleniyor...');
+
+        // Hiçbir şey yapmamıza gerek yok, initScript her şeyi halledecek.
 
     } catch (e) {
         console.error('❌ Hata:', e.message);
