@@ -15,6 +15,10 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.static(path.join(__dirname, '../')));
 
+app.get('/api/prices', (req, res) => {
+    res.json(latestPrices);
+});
+
 const server = app.listen(PORT, () => {
     console.log(`🚀 Server ${PORT} portunda yayında`);
     setTimeout(startTradingViewConnection, 2000);
