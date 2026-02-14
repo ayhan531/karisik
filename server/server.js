@@ -30,7 +30,7 @@ let latestPrices = {};
 const symbolMapping = {
     // ENDEKSLER (Indices)
     'XSINA': 'BIST:XUSIN',
-    'CAC40': 'TVC:CAC40',     // Fix: CAC40 tam kod budur
+    'CAC40': 'TVC:CAC40',
     'NI225': 'TVC:NI225',
     'DJI': 'TVC:DJI',
     'SZSE': 'TVC:SHCOMP',
@@ -42,13 +42,13 @@ const symbolMapping = {
 
     // EMTIA (Commodities)
     'BRENT': 'TVC:UKOIL',
-    'GLDGR': 'ICE:XAUTRYG',   // Fix: Gram Altın tam kod
+    'GLDGR': 'FX_IDC:XAUTRYG', // Bitirici Fix: En stabil Gram Altın kaynağı
     'XAUTRY': 'FX_IDC:XAUTRY',
     'XAGTRY': 'FX_IDC:XAGTRY',
 
     // BIST HİSSELERİ (Fix)
     'TEKFEN': 'BIST:TKFEN',
-    'KOZAA': 'BIST:KOZAA',    // Fix: Tam eşleşme
+    'KOZAA': 'BIST:KOZAA',
 
     // US STOCKS
     'JPM': 'NYSE:JPM', 'BAC': 'NYSE:BAC', 'DIS': 'NYSE:DIS',
@@ -76,7 +76,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (FINAL OPERASYON)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (BITIRICI OPERASYON)...');
     if (browser) try { await browser.close(); } catch (e) { }
 
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -108,10 +108,10 @@ async function startTradingViewConnection() {
                 let i = 0;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
-                    const chunk = symbols.slice(i, i + 40);
+                    const chunk = symbols.slice(i, i + 35); // Chunk size düşürüldü, garanti olsun
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                    i += 40;
-                    setTimeout(addBatch, 1200);
+                    i += 35;
+                    setTimeout(addBatch, 1500); // Gecikme artırıldı
                 };
                 setTimeout(addBatch, 5000);
             });
@@ -144,12 +144,21 @@ function processRawData(rawData) {
                 let symbolRaw = data.n;
                 const values = data.v;
                 if (!symbolRaw || !values) continue;
+
+                // Normalizasyon: BIST:KOZAA, 1 gibi durumları temizle
                 let tvTicker = symbolRaw.split(',')[0].trim();
+
+                // Eşleşme Bul
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
+
+                // Manuel Kontroller
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
+                if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
+
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
                 if (values.lp) latestPrices[symbol].price = values.lp;
                 if (values.chp) latestPrices[symbol].changePercent = values.chp;
+
                 if (latestPrices[symbol].price) {
                     const broadcastMsg = JSON.stringify({
                         type: 'price_update',
