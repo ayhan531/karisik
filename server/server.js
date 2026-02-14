@@ -42,28 +42,31 @@ const symbolMapping = {
 
     // EMTIA (Commodities)
     'BRENT': 'TVC:UKOIL',
-    'GLDGR': 'FX_IDC:XAUTRYG', // Bitirici Fix: En stabil Gram Altın kaynağı
+    'GLDGR': 'FX_IDC:XAUTRYG',
     'XAUTRY': 'FX_IDC:XAUTRY',
     'XAGTRY': 'FX_IDC:XAGTRY',
 
     // BIST HİSSELERİ (Fix)
     'TEKFEN': 'BIST:TKFEN',
-    'KOZAA': 'BIST:KOZAA',
-
-    // US STOCKS
-    'JPM': 'NYSE:JPM', 'BAC': 'NYSE:BAC', 'DIS': 'NYSE:DIS',
-    'KO': 'NYSE:KO', 'MA': 'NYSE:MA', 'WFC': 'NYSE:WFC',
-    'C': 'NYSE:C', 'GS': 'NYSE:GS', 'MS': 'NYSE:MS',
-    'BA': 'NYSE:BA', 'V': 'NYSE:V', 'IBM': 'NYSE:IBM',
-    'JNJ': 'NYSE:JNJ', 'PFE': 'NYSE:PFE'
+    'KOZAA': 'BIST:KOZAA'
 };
+
+// ÜNLÜ NYSE HİSSELERİ (NASDAQ de olanlar hariç hepsi buraya)
+const nyseStocks = [
+    'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'PEP', 'MCD',
+    'NKE', 'WMT', 'TGT', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX',
+    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T'
+];
 
 function getSymbolForCategory(symbol, category) {
     if (symbolMapping[symbol]) return symbolMapping[symbol];
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'KRIPTO') return `BINANCE:${symbol}`;
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'STOCKS') return `NASDAQ:${symbol}`;
+    if (category === 'STOCKS') {
+        // NYSE listesindeyse NYSE, değilse default NASDAQ
+        return nyseStocks.includes(symbol) ? `NYSE:${symbol}` : `NASDAQ:${symbol}`;
+    }
     return symbol;
 }
 
@@ -76,7 +79,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (BITIRICI OPERASYON)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (BITIRICI OPERASYON - V2)...');
     if (browser) try { await browser.close(); } catch (e) { }
 
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -108,10 +111,10 @@ async function startTradingViewConnection() {
                 let i = 0;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
-                    const chunk = symbols.slice(i, i + 35); // Chunk size düşürüldü, garanti olsun
+                    const chunk = symbols.slice(i, i + 35);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += 35;
-                    setTimeout(addBatch, 1500); // Gecikme artırıldı
+                    setTimeout(addBatch, 1500);
                 };
                 setTimeout(addBatch, 5000);
             });
@@ -145,13 +148,9 @@ function processRawData(rawData) {
                 const values = data.v;
                 if (!symbolRaw || !values) continue;
 
-                // Normalizasyon: BIST:KOZAA, 1 gibi durumları temizle
                 let tvTicker = symbolRaw.split(',')[0].trim();
-
-                // Eşleşme Bul
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
-                // Manuel Kontroller
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
 
