@@ -26,7 +26,7 @@ class TradingApp {
         // Production/Development dynamic URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        const wsUrl = `${protocol}//${host}`;
+        const wsUrl = `${protocol}//${host}?token=EsMenkul_Secret_2026`;
 
         console.log(`📡 WebSocket Adresi: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl);

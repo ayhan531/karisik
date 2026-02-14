@@ -11,11 +11,16 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const API_SECRET = 'EsMenkul_Secret_2026'; // 🛡️ SENİN ÖZEL ŞİFREN
 
 app.use(cors());
 app.use(express.static(path.join(__dirname, '../')));
 
 app.get('/api/prices', (req, res) => {
+    const clientKey = req.headers['x-api-key'];
+    if (clientKey !== API_SECRET) {
+        return res.status(401).json({ error: 'Yetkisiz erişim! Geçersiz API Anahtarı.' });
+    }
     res.json(latestPrices);
 });
 
@@ -24,7 +29,18 @@ const server = app.listen(PORT, () => {
     setTimeout(startTradingViewConnection, 2000);
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+    server,
+    verifyClient: (info, callback) => {
+        const url = new URL(info.req.url, `http://${info.req.headers.host}`);
+        const token = url.searchParams.get('token');
+        if (token === API_SECRET) {
+            callback(true);
+        } else {
+            callback(false, 401, 'Yetkisiz WebSocket Bağlantısı');
+        }
+    }
+});
 
 let browser = null;
 let page = null;
