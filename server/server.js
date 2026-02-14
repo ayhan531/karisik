@@ -26,10 +26,10 @@ let browser = null;
 let page = null;
 let latestPrices = {};
 
-// TRADINGVIEW KOD SÖZLÜĞÜ (Hatalı/Bekleniyor Olanlar İçin)
+// TRADINGVIEW KOD SÖZLÜĞÜ (TAM VE EKSİKSİZ VERSİYON)
 const symbolMapping = {
-    // EMTIA (Kritik Düzeltmeler)
-    'BRENT': 'ICE:BRN1!',
+    // EMTIA
+    'BRENT': 'TVC:UKOIL',
     'USOIL': 'TVC:USOIL',
     'NG1!': 'NYMEX:NG1!',
     'COPPER': 'COMEX:HG1!',
@@ -41,16 +41,19 @@ const symbolMapping = {
     'COTTON': 'ICEUS:CT1!',
     'PLATINUM': 'NYMEX:PL1!',
     'PALLADIUM': 'NYMEX:PA1!',
-    'GLDGR': 'FX:XAUTRYG',
+    'GLDGR': 'OANDA:XAU_TRY',
+    'XAUTRY': 'FX_IDC:XAUTRY',
+    'XAGTRY': 'FX_IDC:XAGTRY',
     // ENDEKSLER
-    'DAX': 'XETR:DAX',
-    'UKX': 'FTSE:UKX',
-    'CAC40': 'EURONEXT:CAC40',
-    'NI225': 'TSE:NI225',
-    'SZSE': 'SZSE:399001', // Shenzhen Comp
-    'HSI': 'HSI:HSI',
-    'NDX': 'NASDAQ:NDX',
-    'SPX': 'S&P:SPX'
+    'DAX': 'TVC:DAX',
+    'UKX': 'TVC:UKX',
+    'CAC40': 'TVC:CAC',
+    'NI225': 'TVC:NI225',
+    'SZSE': 'TVC:SHCOMP',
+    'HSI': 'TVC:HSI',
+    'XSINA': 'BIST:XSINA',
+    'NDX': 'TVC:NDX',
+    'SPX': 'TVC:SPX'
 };
 
 function getSymbolForCategory(symbol, category) {
@@ -62,10 +65,7 @@ function getSymbolForCategory(symbol, category) {
     }
     if (category === 'EMTIA') return `TVC:${symbol}`;
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'KRIPTO') {
-        // symbols.js'deki isme (BTCUSDT veya BTCTRY) göre prefix ata
-        return `BINANCE:${symbol}`;
-    }
+    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
 
@@ -83,7 +83,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Final Fix)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Final Eksiksiz Fix)...');
 
     if (browser) try { await browser.close(); } catch (e) { }
 
@@ -129,9 +129,9 @@ async function startTradingViewConnection() {
                     const chunk = symbols.slice(i, i + chunkSize);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += chunkSize;
-                    setTimeout(addBatch, 1000);
+                    setTimeout(addBatch, 800);
                 };
-                setTimeout(addBatch, 4000);
+                setTimeout(addBatch, 3000);
             });
 
             ws.addEventListener('message', (event) => window.onDataReceived(event.data));
@@ -149,7 +149,6 @@ async function startTradingViewConnection() {
     }
 }
 
-// Tersten eşleşme (TV Kodu -> Senin Sembolün)
 const reverseMapping = {};
 Object.entries(symbolMapping).forEach(([key, value]) => {
     reverseMapping[value] = key;
@@ -172,10 +171,7 @@ function processRawData(rawData) {
                 const values = data.v;
                 if (!symbolRaw || !values) continue;
 
-                // 1. TradingView'in eklerini temizle (örn: BIST:BEKO, 1 -> BIST:BEKO)
                 let tvTicker = symbolRaw.split(',')[0].trim();
-
-                // 2. Sözlükten geri çevir veya prefix'i at
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
