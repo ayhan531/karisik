@@ -71,37 +71,41 @@ class TradingApp {
 
     // Gerçek fiyat güncellemesi
     handlePriceUpdate(data) {
-        // TradingView sembol formatından bizim formata çevir
-        const parts = data.symbol.split(':');
-        const cleanSymbol = parts[1] || parts[0];
-        const baseSymbol = cleanSymbol.replace('USDT', '');
-
-        this.prices[baseSymbol] = data;
+        // Server zaten normalize edilmiş sembol gönderiyor (örn: BTC, THYAO)
+        const symbol = data.symbol;
+        this.prices[symbol] = data;
 
         // DOM'u güncelle
-        const priceEl = document.getElementById(`price-${baseSymbol}`);
-        const changeEl = document.getElementById(`change-${baseSymbol}`);
+        const priceEl = document.getElementById(`price-${symbol}`);
+        const changeEl = document.getElementById(`change-${symbol}`);
 
-        if (priceEl && data.price) {
-            const oldPrice = parseFloat(priceEl.textContent);
+        if (priceEl && data.price !== undefined) {
+            const oldPrice = parseFloat(priceEl.innerText.replace(/[^0-9.-]/g, '')) || 0;
             const newPrice = parseFloat(data.price);
 
-            priceEl.textContent = newPrice.toFixed(2);
+            // Fiyatı formatla
+            priceEl.innerText = newPrice.toFixed(2);
 
             // Flash animasyonu
             if (newPrice > oldPrice) {
-                priceEl.style.color = '#48bb78';
+                this.flashElement(priceEl, '#48bb78'); // Yeşil
             } else if (newPrice < oldPrice) {
-                priceEl.style.color = '#f56565';
+                this.flashElement(priceEl, '#f56565'); // Kırmızı
             }
-            setTimeout(() => priceEl.style.color = 'white', 800);
         }
 
-        if (changeEl && data.changePercent) {
-            const isPositive = data.changePercent >= 0;
+        if (changeEl && data.changePercent !== undefined) {
+            const change = parseFloat(data.changePercent);
+            const isPositive = change >= 0;
+
+            changeEl.innerText = `${isPositive ? '+' : ''}${change.toFixed(2)}%`;
             changeEl.className = `change-val ${isPositive ? 'positive' : 'negative'}`;
-            changeEl.textContent = `${isPositive ? '+' : ''}${data.changePercent.toFixed(2)}%`;
         }
+    }
+
+    flashElement(el, color) {
+        el.style.color = color;
+        setTimeout(() => el.style.color = 'white', 800);
     }
 
     updateConnectionStatus(connected) {
