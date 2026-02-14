@@ -13,7 +13,6 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 
 // KULLANICI AYARLARI (PREMIUM İÇİN BURAYA SESSION ID YAZILABİLİR VEYA ENV'den OKUNUR)
-// Boş bırakılırsa "Akıllı Misafir Modu" (Token Çalma) devreye girer.
 const TRADINGVIEW_SESSION_ID = process.env.TV_SESSION_ID || '';
 const TRADINGVIEW_SESSION_SIGN = process.env.TV_SESSION_SIGN || '';
 
@@ -85,12 +84,21 @@ async function startTradingViewConnection() {
         args: args
     });
 
+    // GERÇEK KULLANICI GİBİ GÖRÜNMEK İÇİN DETAYLI CONTEXT
     const context = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        viewport: { width: 1024, height: 768 }
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+        viewport: { width: 1512, height: 982 },
+        locale: 'tr-TR',
+        timezoneId: 'Europe/Istanbul',
+        extraHTTPHeaders: {
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Sec-Ch-Ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"macOS"'
+        }
     });
 
-    // Eğer Session ID varsa ekle (Premium Data için)
+    // Eğer Session ID varsa ekle
     if (TRADINGVIEW_SESSION_ID) {
         console.log('💎 Premium Session ID algılandı, giriş yapılıyor...');
         await context.addCookies([
@@ -130,7 +138,8 @@ async function startTradingViewConnection() {
 
     try {
         console.log('⏳ TradingView Ana Sayfası yükleniyor (Token Çalmak için)...');
-        await page.goto('https://www.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
+        // Türkçe siteye git
+        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
 
         console.log('✅ Sayfa yüklendi. Token aranıyor...');
 
@@ -170,7 +179,7 @@ async function startTradingViewConnection() {
 
                 console.log('WS-LOG: Bağlantı Tokeni: ' + finalToken);
 
-                // WebSocket Başlat (STANDART URL)
+                // WebSocket Başlat (STANDART URL - EIO=3 ÖNEMLİ)
                 const ws = new WebSocket('wss://data.tradingview.com/socket.io/?EIO=3&transport=websocket');
                 window.tvSocket = ws;
 
@@ -188,12 +197,13 @@ async function startTradingViewConnection() {
                     ws.send(constructMessage('quote_create_session', [sessionId]));
                     ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
+                    // Daha yavaş sembol ekle
                     const chunkSize = 20;
                     for (let i = 0; i < symbols.length; i += chunkSize) {
                         const chunk = symbols.slice(i, i + chunkSize);
                         if (ws.readyState !== 1) break;
                         ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                        await sleep(300);
+                        await sleep(500); // Yarım saniye bekle
                     }
                     console.log('WS-LOG: Veri akışı başlatıldı!');
 
