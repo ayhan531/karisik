@@ -4,9 +4,9 @@ services:
     name: karisik-server
     env: node
     region: frankfurt
-    buildCommand: cd server && npm install && npx playwright install chromium
-    startCommand: cd server && npm start
-    healthCheckPath: /
+    rootDir: server
+    buildCommand: npm install && npx playwright install chromium
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -18,7 +18,7 @@ services:
     name: karisik-frontend
     env: static
     region: frankfurt
-    buildCommand: echo "No build needed for static frontend"
+    buildCommand: echo "No build needed"
     staticPublishPath: ./
     routes:
       - type: rewrite
