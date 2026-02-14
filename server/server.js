@@ -26,14 +26,14 @@ let browser = null;
 let page = null;
 let latestPrices = {};
 
-// 🎯 EKSİKSİZ VE NOKTA ATIŞI MAPPING (SÖZLÜK)
+// 🎯 KESİN VE SON NOKTA ATIŞI MAPPING
 const symbolMapping = {
     // ENDEKSLER (Indices)
-    'XSINA': 'BIST:XUSIN',    // Fix: XUSIN doğru koddur
-    'CAC40': 'TVC:CAC',       // Fix: TVC kaynağı daha stabildir
-    'NI225': 'TVC:NI225',     // Fix: TVC kaynağı
-    'DJI': 'TVC:DJI',         // Fix: Dow Jones TVC
-    'SZSE': 'TVC:SHCOMP',     // Fix: Shenzhen Composite
+    'XSINA': 'BIST:XUSIN',
+    'CAC40': 'TVC:CAC40',     // Fix: CAC40 tam kod budur
+    'NI225': 'TVC:NI225',
+    'DJI': 'TVC:DJI',
+    'SZSE': 'TVC:SHCOMP',
     'DAX': 'TVC:DAX',
     'UKX': 'TVC:UKX',
     'HSI': 'TVC:HSI',
@@ -41,30 +41,21 @@ const symbolMapping = {
     'SPX': 'TVC:SPX',
 
     // EMTIA (Commodities)
-    'BRENT': 'TVC:UKOIL',     // Fix: Global Brent kaynağı
-    'GLDGR': 'OANDA:XAU_TRY', // Fix: 7/24 Veri (Gram Altın Karşılığı)
+    'BRENT': 'TVC:UKOIL',
+    'GLDGR': 'ICE:XAUTRYG',   // Fix: Gram Altın tam kod
     'XAUTRY': 'FX_IDC:XAUTRY',
-    'XAGTRY': 'FX_IDC:XAGTRY', // Fix: Gümüş TL Spot
+    'XAGTRY': 'FX_IDC:XAGTRY',
 
-    // BIST HİSSELERİ (Özel Durumlar)
-    'TEKFEN': 'BIST:TKFEN',    // TradingView'de TKFEN olarak geçebilir
-    'KOZAA': 'BIST:KOZAA',
+    // BIST HİSSELERİ (Fix)
+    'TEKFEN': 'BIST:TKFEN',
+    'KOZAA': 'BIST:KOZAA',    // Fix: Tam eşleşme
 
-    // US STOCKS (NYSE/NASDAQ Nokta Atışı)
-    'JPM': 'NYSE:JPM',
-    'BAC': 'NYSE:BAC',
-    'DIS': 'NYSE:DIS',
-    'KO': 'NYSE:KO',
-    'MA': 'NYSE:MA',
-    'WFC': 'NYSE:WFC',
-    'C': 'NYSE:C',
-    'GS': 'NYSE:GS',
-    'MS': 'NYSE:MS',
-    'BA': 'NYSE:BA',
-    'V': 'NYSE:V',
-    'IBM': 'NYSE:IBM',
-    'JNJ': 'NYSE:JNJ',
-    'PFE': 'NYSE:PFE'
+    // US STOCKS
+    'JPM': 'NYSE:JPM', 'BAC': 'NYSE:BAC', 'DIS': 'NYSE:DIS',
+    'KO': 'NYSE:KO', 'MA': 'NYSE:MA', 'WFC': 'NYSE:WFC',
+    'C': 'NYSE:C', 'GS': 'NYSE:GS', 'MS': 'NYSE:MS',
+    'BA': 'NYSE:BA', 'V': 'NYSE:V', 'IBM': 'NYSE:IBM',
+    'JNJ': 'NYSE:JNJ', 'PFE': 'NYSE:PFE'
 };
 
 function getSymbolForCategory(symbol, category) {
@@ -79,24 +70,17 @@ function getSymbolForCategory(symbol, category) {
 function prepareAllSymbols() {
     const formattedSymbols = [];
     Object.entries(symbolsData).forEach(([category, symbols]) => {
-        symbols.forEach(sym => {
-            formattedSymbols.push(getSymbolForCategory(sym, category));
-        });
+        symbols.forEach(sym => { formattedSymbols.push(getSymbolForCategory(sym, category)); });
     });
     return [...new Set(formattedSymbols)];
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (KESİN ÇÖZÜM VERSİYONU)...');
-
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (FINAL OPERASYON)...');
     if (browser) try { await browser.close(); } catch (e) { }
 
-    browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const context = await browser.newContext();
-
     await context.addCookies([
         { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
         { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' }
@@ -113,30 +97,24 @@ async function startTradingViewConnection() {
         window.WebSocket = function (url, protocols) {
             const ws = new NativeWebSocket(url, protocols);
             window.tvSocket = ws;
-
             ws.addEventListener('open', () => {
                 const constructMessage = (func, paramList) => {
                     const json = JSON.stringify({ m: func, p: paramList });
                     return `~m~${json.length}~m~${json}`;
                 };
-
                 const sessionId = 'qs_' + Math.random().toString(36).substring(7);
                 ws.send(constructMessage('quote_create_session', [sessionId]));
                 ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
-
                 let i = 0;
-                const chunkSize = 40;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
-                    if (ws.readyState !== 1) return;
-                    const chunk = symbols.slice(i, i + chunkSize);
+                    const chunk = symbols.slice(i, i + 40);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                    i += chunkSize;
+                    i += 40;
                     setTimeout(addBatch, 1200);
                 };
                 setTimeout(addBatch, 5000);
             });
-
             ws.addEventListener('message', (event) => window.onDataReceived(event.data));
             ws.addEventListener('close', (e) => { if (e.code !== 1000) window.onBrowserReloadRequest(); });
             return ws;
@@ -145,18 +123,11 @@ async function startTradingViewConnection() {
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
     }, allSymbols);
 
-    try {
-        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
-    } catch (e) {
-        setTimeout(startTradingViewConnection, 10000);
-    }
+    try { await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 }); } catch (e) { setTimeout(startTradingViewConnection, 10000); }
 }
 
-// Tersten eşleşme sözlüğü
 const reverseMapping = {};
-Object.entries(symbolMapping).forEach(([key, value]) => {
-    reverseMapping[value] = key;
-});
+Object.entries(symbolMapping).forEach(([key, value]) => { reverseMapping[value] = key; });
 
 function processRawData(rawData) {
     const regex = /~m~(\d+)~m~/g;
@@ -166,7 +137,6 @@ function processRawData(rawData) {
         const start = match.index + match[0].length;
         const jsonStr = rawData.substring(start, start + length);
         regex.lastIndex = start + length;
-
         try {
             const msg = JSON.parse(jsonStr);
             if (msg.m === 'qsd' && msg.p && msg.p[1]) {
@@ -174,27 +144,16 @@ function processRawData(rawData) {
                 let symbolRaw = data.n;
                 const values = data.v;
                 if (!symbolRaw || !values) continue;
-
                 let tvTicker = symbolRaw.split(',')[0].trim();
-
-                // 1. Sözlükten bak 2. Prefix at 3. Manuel fixler
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
-
-                // TKFEN -> TEKFEN düzeltmesi (Hala eşleşmiyorsa)
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
-
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
                 if (values.lp) latestPrices[symbol].price = values.lp;
                 if (values.chp) latestPrices[symbol].changePercent = values.chp;
-
                 if (latestPrices[symbol].price) {
                     const broadcastMsg = JSON.stringify({
                         type: 'price_update',
-                        data: {
-                            symbol: symbol,
-                            price: latestPrices[symbol].price,
-                            changePercent: latestPrices[symbol].changePercent
-                        }
+                        data: { symbol: symbol, price: latestPrices[symbol].price, changePercent: latestPrices[symbol].changePercent }
                     });
                     wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                 }
@@ -207,10 +166,7 @@ wss.on('connection', (ws) => {
     Object.keys(latestPrices).forEach(sym => {
         const p = latestPrices[sym];
         if (p.price) {
-            ws.send(JSON.stringify({
-                type: 'price_update',
-                data: { symbol: sym, price: p.price, changePercent: p.changePercent }
-            }));
+            ws.send(JSON.stringify({ type: 'price_update', data: { symbol: sym, price: p.price, changePercent: p.changePercent } }));
         }
     });
 });
