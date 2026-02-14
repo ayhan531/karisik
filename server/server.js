@@ -28,34 +28,31 @@ let browser = null;
 let page = null;
 let latestPrices = {};
 
-// DOĞRU DATA MAPPING (TRADINGVIEW PREFIXLERİ)
+// TRADINGVIEW STABIL TICKER MAPPING
 function getSymbolForCategory(symbol, category) {
     if (category === 'ENDEKSLER') {
-        if (symbol.startsWith('XU') || symbol.startsWith('XS') || symbol === 'XBANK') return `BIST:${symbol}`;
+        if (symbol === 'XU100' || symbol === 'XU030' || symbol === 'XBANK' || symbol === 'XSINA') return `BIST:${symbol}`;
         if (symbol === 'NDX' || symbol === 'SPX' || symbol === 'DJI') return `TVC:${symbol}`;
-        if (symbol === 'DAX' || symbol === 'UKX' || symbol === 'CAC40') return `TVC:${symbol}`;
-        if (symbol === 'NI225' || symbol === 'SZSE' || symbol === 'HSI') return `TVC:${symbol}`;
+        if (symbol === 'DAX') return 'XETR:DAX';
+        if (symbol === 'UKX') return 'FTSE:UKX';
+        if (symbol === 'CAC40') return 'EURONEXT:CAC40';
         return `TVC:${symbol}`;
     }
     if (category === 'EMTIA') {
-        if (symbol === 'BRENT' || symbol === 'USOIL') return `TVC:${symbol}`;
-        // Altın ve Gümüş TL Pariteleri (FX_IDC veya ICE)
+        if (symbol === 'BRENT') return 'ICE:BRN1!';
+        if (symbol === 'USOIL') return 'TVC:USOIL';
+        if (symbol === 'GLDGR') return 'FX:XAUTRYG'; // Gram Altın (ICE/FX en stabili)
         if (symbol === 'XAUTRY' || symbol === 'XAGTRY') return `FX_IDC:${symbol}`;
-        if (symbol === 'XAUUSD' || symbol === 'XAGUSD') return `FX_IDC:${symbol}`;
-        if (symbol === 'GLDGR') return `BIST:${symbol}`;
-        if (symbol.includes('GRAM')) return `BIST:GLDGR`;
+        if (symbol === 'NG1!') return 'NYMEX:NG1!';
+        if (symbol === 'COPPER') return 'COMEX:HG1!';
         return `TVC:${symbol}`;
     }
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'KRIPTO') {
-        // Binance TR (TRY) veya Binance Global (USDT)
-        // TradingView'de Crypto TRY çiftleri genelde BINANCE:BTCTRY şeklindedir
-        return `BINANCE:${symbol}`;
-    }
+    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
 
-    return `BINANCE:${symbol}USDT`; // Fallback
+    return `BINANCE:${symbol}`;
 }
 
 function prepareAllSymbols() {
@@ -68,12 +65,8 @@ function prepareAllSymbols() {
     return [...new Set(formattedSymbols)];
 }
 
-// ---------------------------------------------------------
-// CORE LOGIC: SOCKET HIJACKING (The Ultimate Method)
-// ---------------------------------------------------------
-
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Hijack Modu)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (Optimize Mod)...');
 
     if (browser) await browser.close();
 
@@ -87,25 +80,11 @@ async function startTradingViewConnection() {
         '--disable-blink-features=AutomationControlled'
     ];
 
-    browser = await chromium.launch({
-        headless: true,
-        args: args
-    });
-
+    browser = await chromium.launch({ headless: true, args: args });
     const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
-        viewport: { width: 1440, height: 900 },
-        locale: 'tr-TR',
-        timezoneId: 'Europe/Istanbul',
-        extraHTTPHeaders: {
-            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Sec-Ch-Ua': '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Ch-Ua-Platform': '"macOS"'
-        }
     });
 
-    // KULLANICI ÇEREZLERİ (Kalıcı Oturum)
     await context.addCookies([
         { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
         { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' },
@@ -115,14 +94,6 @@ async function startTradingViewConnection() {
 
     page = await context.newPage();
 
-    // RAM Tasarrufu
-    await page.route('**/*', route => {
-        const url = route.request().url();
-        const type = route.request().resourceType();
-        if (type === 'image' || type === 'media' || type === 'font') return route.abort();
-        return route.continue();
-    });
-
     page.on('console', msg => {
         const txt = msg.text();
         if (txt.includes('WS-LOG:')) console.log(txt.replace('WS-LOG:', '📡'));
@@ -130,26 +101,19 @@ async function startTradingViewConnection() {
 
     await page.exposeFunction('onDataReceived', (data) => processRawData(data));
     await page.exposeFunction('onBrowserReloadRequest', () => {
-        console.log('♻️ Bağlantı koptu, yeniden deneniyor...');
         setTimeout(startTradingViewConnection, 5000);
     });
 
-    // 🥷 SOKET HIJACK SCRIPT 🥷
     const allSymbols = prepareAllSymbols();
 
     await page.addInitScript((symbols) => {
-        console.log('WS-LOG: Hijack Script Yüklendi.');
-
         const NativeWebSocket = window.WebSocket;
 
         window.WebSocket = function (url, protocols) {
-            console.log('WS-LOG: TV Soket Açıyor -> ' + url);
             const ws = new NativeWebSocket(url, protocols);
             window.tvSocket = ws;
 
             ws.addEventListener('open', () => {
-                console.log('WS-LOG: TV Soketi AÇILDI! 🟢 (Hooked)');
-
                 const constructMessage = (func, paramList) => {
                     const json = JSON.stringify({ m: func, p: paramList });
                     return `~m~${json.length}~m~${json}`;
@@ -159,51 +123,36 @@ async function startTradingViewConnection() {
                 ws.send(constructMessage('quote_create_session', [sessionId]));
                 ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
-                console.log('WS-LOG: Semboller ekleniyor...');
                 let i = 0;
-                const chunkSize = 20;
+                const chunkSize = 50; // Hızlandırıldı (20 -> 50)
 
                 const addBatch = () => {
-                    if (i >= symbols.length) {
-                        console.log('WS-LOG: Tüm semboller eklendi!');
-                        return;
-                    }
+                    if (i >= symbols.length) return;
                     if (ws.readyState !== 1) return;
 
                     const chunk = symbols.slice(i, i + chunkSize);
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
                     i += chunkSize;
 
-                    setTimeout(addBatch, 1000);
+                    setTimeout(addBatch, 800); // Gecikme azaltıldı (1000 -> 800)
                 };
                 setTimeout(addBatch, 3000);
             });
 
             ws.addEventListener('message', (event) => window.onDataReceived(event.data));
-
             ws.addEventListener('close', (e) => {
-                console.log('WS-LOG: Soket Koptu 🔴 Kod: ' + e.code);
                 if (e.code !== 1000) window.onBrowserReloadRequest();
             });
 
             return ws;
         };
-
         window.WebSocket.prototype = NativeWebSocket.prototype;
-        window.WebSocket.CONNECTING = NativeWebSocket.CONNECTING;
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
-        window.WebSocket.CLOSING = NativeWebSocket.CLOSING;
-        window.WebSocket.CLOSED = NativeWebSocket.CLOSED;
-
     }, allSymbols);
 
-
     try {
-        console.log('⏳ TradingView Ana Sayfası Yükleniyor...');
         await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
-        console.log('✅ Sayfa Yüklendi. Hijack bekleniyor...');
     } catch (e) {
-        console.error('❌ Hata:', e.message);
         setTimeout(startTradingViewConnection, 10000);
     }
 }
@@ -211,7 +160,6 @@ async function startTradingViewConnection() {
 function processRawData(rawData) {
     const regex = /~m~(\d+)~m~/g;
     let match;
-
     while ((match = regex.exec(rawData)) !== null) {
         const length = parseInt(match[1]);
         const start = match.index + match[0].length;
@@ -222,16 +170,14 @@ function processRawData(rawData) {
             const msg = JSON.parse(jsonStr);
             if (msg.m === 'qsd' && msg.p && msg.p[1]) {
                 const data = msg.p[1];
-                const symbolRaw = data.n;
+                let symbolRaw = data.n;
                 const values = data.v;
-
                 if (!symbolRaw || !values) continue;
 
-                // Sadece Prefix'i kaldır. Suffix (TRY, USDT) kalsın.
-                const symbol = symbolRaw.split(':').pop();
+                // FIX: "BIST:BEKO, 1" gibi ekleri temizle.
+                let symbol = symbolRaw.split(',')[0].split(':').pop();
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
-
                 if (values.lp) latestPrices[symbol].price = values.lp;
                 if (values.chp) latestPrices[symbol].changePercent = values.chp;
 
@@ -244,10 +190,7 @@ function processRawData(rawData) {
                             changePercent: latestPrices[symbol].changePercent
                         }
                     });
-
-                    wss.clients.forEach(c => {
-                        if (c.readyState === 1) c.send(broadcastMsg);
-                    });
+                    wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                 }
             }
         } catch (e) { }
