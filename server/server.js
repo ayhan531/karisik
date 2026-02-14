@@ -103,88 +103,50 @@ async function connectToTradingView() {
 
     console.log('📊 TradingView watchlist sayfası açılıyor...');
 
-    // WebSocket listener'ı sayfa yüklenmeden önce kur
-    page.on('websocket', ws => {
-        console.log('🔌 WebSocket bağlantısı yakalandı!');
+    // Artık page.on('websocket') dinleyicisine gerek yok çünkü her sayfa kendi listener'ını ekleyecek
 
-        ws.on('framereceived', event => {
-            try {
-                const payload = event.payload;
-                if (typeof payload === 'string') {
-                    handleTradingViewMessage(payload);
-                }
-            } catch (err) {
-                // Silent
-            }
-        });
-    });
+    // Tüm marketleri kapsamak için birden fazla sekme aç
+    const marketUrls = [
+        // 1. KRIPTO (Tüm Kripto Paralar)
+        'https://www.tradingview.com/crypto-markets/prices-all/',
 
-    // Daha hızlı yüklenen bir sayfa kullan ve hata olursa logla
-    try {
-        console.log('⏳ TradingView Grafik Sayfası yükleniyor...');
-        // Generic Chart sayfası her türlü veriyi çeker (BIST, NASDAQ, FX dahil)
-        await page.goto('https://www.tradingview.com/chart/?symbol=BINANCE:BTCUSDT', {
-            timeout: 60000,
-            waitUntil: 'domcontentloaded'
-        });
-        console.log('✅ Grafik Sayfası başarıyla yüklendi!');
-    } catch (e) {
-        console.error('⚠️ Sayfa tam yüklenemedi ama WebSocket dinleniyor. Hata:', e.message);
-        // Sayfa başlığını logla (belki 403 veya Cloudflare sayfasıdır)
+        // 2. BIST (Tüm Türk Hisseleri)
+        'https://tr.tradingview.com/markets/stocks-turkey/market-movers-all-stocks/',
+
+        // 3. FOREX & GENEL (Majör Pariteler ve Endeksler)
+        'https://www.tradingview.com/markets/currencies/rates-all/'
+    ];
+
+    console.log(`🌐 ${marketUrls.length} farklı market sayfası açılıyor...`);
+
+    for (const url of marketUrls) {
         try {
-            const title = await page.title();
-            console.log('📄 Sayfa Başlığı:', title);
-        } catch (err) { console.log('Başlık alınamadı'); }
+            console.log(`⏳ Yükleniyor: ${url}`);
+
+            // Yeni sayfa aç
+            const p = await context.newPage();
+
+            // WebSocket dinle
+            p.on('websocket', ws => {
+                ws.on('framereceived', frame => {
+                    try {
+                        const payload = frame.payload;
+                        // Buffer veya string olabilir
+                        const data = Buffer.isBuffer(payload) ? payload.toString() : payload;
+                        if (data) handleTradingViewMessage(data);
+                    } catch (err) { }
+                });
+            });
+
+            await p.goto(url, { timeout: 60000, waitUntil: 'domcontentloaded' });
+            console.log(`✅ Sayfa aktif: ${url}`);
+
+        } catch (e) {
+            console.error(`⚠️ Sayfa hatası (${url}):`, e.message);
+        }
     }
 
-    // WebSocket mesajlarını dinle
-    page.on('websocket', ws => {
-        console.log('🔌 WebSocket bağlantısı yakalandı:', ws.url());
-
-        ws.on('framereceived', event => {
-            try {
-                const payload = event.payload;
-                if (typeof payload === 'string' && payload.includes('quote')) {
-                    handleTradingViewMessage(payload);
-                }
-            } catch (err) {
-                // Silent error
-            }
-        });
-    });
-
-    // Sembolleri subscribe et (sayfa üzerinde)
-    await subscribeSymbols();
-
-    console.log('✅ Browser bağlantısı aktif ve veriler dinleniyor!');
-}
-
-// Sembolleri sayfada subscribe et
-async function subscribeSymbols() {
-    console.log('📌 Semboller subscribe ediliyor...');
-
-    // İlk 50 sembol ile başla (rate limiting için)
-    const allSymbols = [];
-    Object.entries(symbolsData).forEach(([category, symbols]) => {
-        symbols.slice(0, 20).forEach(sym => {
-            allSymbols.push(getSymbolForCategory(sym, category));
-        });
-    });
-
-    // Watchlist oluştur
-    await page.evaluate((symbols) => {
-        if (window.TradingView && window.TradingView.ChartApi) {
-            symbols.forEach((sym, idx) => {
-                setTimeout(() => {
-                    try {
-                        window.TradingView.ChartApi.getChart().setSymbol(sym);
-                    } catch (e) { }
-                }, idx * 100);
-            });
-        }
-    }, allSymbols.slice(0, 10));
-
-    console.log(`✅ ${allSymbols.length} sembol işleme alındı`);
+    console.log('🚀 Tüm piyasa verileri dinleniyor!');
 }
 
 // TradingView sembolünü frontend formatına çevir
