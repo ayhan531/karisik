@@ -58,12 +58,9 @@ function prepareAllSymbols() {
     return [...new Set(formattedSymbols)];
 }
 
-// ---------------------------------------------------------
-// CORE LOGIC: PREMIUM AUTH MODE (Device Emulation)
-// ---------------------------------------------------------
-
+// PREMIUM BAĞLANTI MANTIĞI
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Premium Bağlantısı Başlatılıyor...');
+    console.log('🌐 TradingView Premium Bağlantısı Başlatılıyor (Yavaş Mod)...');
 
     if (browser) await browser.close();
 
@@ -73,7 +70,7 @@ async function startTradingViewConnection() {
         '--disable-infobars',
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
-        // '--disable-gpu', // Grafiksel olmayan işlemler için kapalı kalsın
+        // '--disable-gpu', 
         '--mute-audio',
         '--disable-blink-features=AutomationControlled'
     ];
@@ -83,6 +80,7 @@ async function startTradingViewConnection() {
         args: args
     });
 
+    // BROWSER AYARLARI (User-Agent ÇOK ÖNEMLİ)
     const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
         viewport: { width: 1440, height: 900 },
@@ -96,14 +94,12 @@ async function startTradingViewConnection() {
         }
     });
 
-    // 🍪 KRİTİK ADIM: KULLANICI ÇEREZLERİNİ YÜKLE (GÜVENLİ CİHAZ OLARAK GÖRÜNMESİ İÇİN)
-    // Bu çerezler sayesinde TradingView bizi "tanıdık cihaz" olarak görür.
+    // KULLANICI ÇEREZLERİ (Kalıcı Oturum İçin)
     await context.addCookies([
         { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
         { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' },
-        { name: 'device_t', value: 'MDQ2N0J3OjA.JXVjSY6qcyTzNumI9qHDD3OcCnepyIaG3KbmPmE0Cy4', domain: '.tradingview.com', path: '/' }, // Çok önemli!
-        { name: 'tv_ecuid', value: '5f98ac9a-cd0a-4198-bbde-e643744083fc', domain: '.tradingview.com', path: '/' },
-        { name: 'etg', value: '5f98ac9a-cd0a-4198-bbde-e643744083fc', domain: '.tradingview.com', path: '/' }
+        { name: 'device_t', value: 'MDQ2N0J3OjA.JXVjSY6qcyTzNumI9qHDD3OcCnepyIaG3KbmPmE0Cy4', domain: '.tradingview.com', path: '/' },
+        { name: 'tv_ecuid', value: '5f98ac9a-cd0a-4198-bbde-e643744083fc', domain: '.tradingview.com', path: '/' }
     ]);
 
     page = await context.newPage();
@@ -112,7 +108,6 @@ async function startTradingViewConnection() {
     await page.route('**/*', route => {
         const url = route.request().url();
         const type = route.request().resourceType();
-
         if (url.includes('socket.io') || type === 'script' || type === 'xhr' || type === 'fetch') {
             return route.continue();
         }
@@ -129,19 +124,19 @@ async function startTradingViewConnection() {
 
     await page.exposeFunction('onDataReceived', (data) => processRawData(data));
     await page.exposeFunction('onBrowserReloadRequest', () => {
-        console.log('♻️ Oturum yenileniyor...');
-        setTimeout(startTradingViewConnection, 1000);
+        console.log('♻️ Bağlantı koptu, yeniden deneniyor...');
+        setTimeout(startTradingViewConnection, 5000); // 5sn bekle
     });
 
     try {
-        console.log('⏳ TradingView Premium Girişi Yapılıyor...');
-        // Türkçe ana sayfa (Zaten giriş yapmış olacağız)
+        console.log('⏳ TradingView Ana Sayfası Yükleniyor...');
+        // Chart yerine ana sayfadan gidelim, belki daha hafiftir
         await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000, waitUntil: 'domcontentloaded' });
 
-        console.log('✅ Giriş Başarılı (Persistent Session).');
+        console.log('✅ Sayfa Açıldı. Token ve Bağlantı Bekleniyor...');
 
         const allSymbols = prepareAllSymbols();
-        console.log(`📊 Hedef Sembol Sayısı: ${allSymbols.length}`);
+        console.log(`📊 Hedef: ${allSymbols.length} Sembol`);
 
         await page.evaluate((symbols) => {
             console.log('WS-LOG: Script Başlatıldı.');
@@ -150,8 +145,8 @@ async function startTradingViewConnection() {
             const waitForToken = async () => {
                 let attempts = 0;
                 while (attempts < 20) {
+                    // Kullanıcı tokenı
                     if (window.user && window.user.auth_token) return window.user.auth_token;
-                    // Pro status user_prostatus=pro olmalı
                     await sleep(500);
                     attempts++;
                 }
@@ -160,22 +155,24 @@ async function startTradingViewConnection() {
 
             const initSocket = async () => {
                 const token = await waitForToken();
-                console.log('WS-LOG: Token: ' + (token ? token.substring(0, 10) + '...' : 'BULUNAMADI'));
+                console.log('WS-LOG: Token Durumu: ' + (token ? '✅ ALINDI' : '❌ BULUNAMADI'));
 
-                // Eğer token hala yoksa fetch dene (ama cookie var, olmalı)
                 let finalToken = token;
                 if (!finalToken) {
                     try {
                         const r = await fetch('/auth/token');
                         const d = await r.json();
                         finalToken = d.userAuthToken;
-                    } catch (e) {
-                        finalToken = 'unauthorized_user_token';
-                    }
+                    } catch (e) { finalToken = 'unauthorized_user_token'; }
                 }
 
-                // WebSocket (Standart)
-                const ws = new WebSocket('wss://data.tradingview.com/socket.io/?EIO=3&transport=websocket');
+                // WebSocket (PRO DATA DENEMESİ)
+                // data.tradingview.com -> Genelde herkese açık
+                // prodata.tradingview.com -> Premium için (Daha stabil olabilir)
+                const wsUrl = 'wss://prodata.tradingview.com/socket.io/?EIO=3&transport=websocket';
+                console.log('WS-LOG: Bağlanılıyor -> ' + wsUrl);
+
+                const ws = new WebSocket(wsUrl);
                 window.tvSocket = ws;
 
                 const constructMessage = (func, paramList) => {
@@ -184,7 +181,7 @@ async function startTradingViewConnection() {
                 };
 
                 ws.onopen = async () => {
-                    console.log('WS-LOG: Socket AÇILDI 🟢 (Premium)');
+                    console.log('WS-LOG: SOKET BAĞLANDI! 🟢');
 
                     ws.send(constructMessage('set_auth_token', [finalToken]));
 
@@ -192,15 +189,23 @@ async function startTradingViewConnection() {
                     ws.send(constructMessage('quote_create_session', [sessionId]));
                     ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
 
-                    // Hızlıca ekle (Pro hesap olduğu için rate limit daha esnektir)
+                    // ÇOK YAVAŞ EKLEME (Rate Limit Koruması)
+                    // Her 1 saniyede sadece 20 sembol gönder
                     const chunkSize = 20;
                     for (let i = 0; i < symbols.length; i += chunkSize) {
                         const chunk = symbols.slice(i, i + chunkSize);
-                        if (ws.readyState !== 1) break;
+
+                        if (ws.readyState !== 1) {
+                            console.log('WS-LOG: Soket hazır değil, durduruluyor...');
+                            break;
+                        }
+
                         ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                        await sleep(200);
+
+                        // ÖNEMLİ: Hızlı istek atmamak için bekle
+                        await sleep(1000);
                     }
-                    console.log('WS-LOG: Canlı veri akışı başladı!');
+                    console.log('WS-LOG: Tüm semboller sıraya alındı ve veri akıyor!');
 
                     setInterval(() => {
                         if (ws.readyState === 1) ws.send('~m~0~m~');
