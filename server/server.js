@@ -33,7 +33,7 @@ const symbolMapping = {
     'CAC40': 'TVC:CAC40',
     'NI225': 'TVC:NI225',
     'DJI': 'TVC:DJI',
-    'SZSE': 'TVC:SHCOMP',
+    'SZSE': 'SZSE:399001',    // Fix: SZSE Component Index
     'DAX': 'TVC:DAX',
     'UKX': 'TVC:UKX',
     'HSI': 'TVC:HSI',
@@ -46,16 +46,16 @@ const symbolMapping = {
     'XAUTRY': 'FX_IDC:XAUTRY',
     'XAGTRY': 'FX_IDC:XAGTRY',
 
-    // BIST HİSSELERİ (Fix)
+    // BIST HİSSELERİ 
     'TEKFEN': 'BIST:TKFEN',
     'KOZAA': 'BIST:KOZAA'
 };
 
-// ÜNLÜ NYSE HİSSELERİ (NASDAQ de olanlar hariç hepsi buraya)
+// NYSE HİSSELERİ (Hatalı Nasdaq eşleşmelerini önlemek için)
 const nyseStocks = [
     'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'PEP', 'MCD',
     'NKE', 'WMT', 'TGT', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX',
-    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T'
+    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM' // ORCL ve CRM eklendi
 ];
 
 function getSymbolForCategory(symbol, category) {
@@ -64,7 +64,6 @@ function getSymbolForCategory(symbol, category) {
     if (category === 'KRIPTO') return `BINANCE:${symbol}`;
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
     if (category === 'STOCKS') {
-        // NYSE listesindeyse NYSE, değilse default NASDAQ
         return nyseStocks.includes(symbol) ? `NYSE:${symbol}` : `NASDAQ:${symbol}`;
     }
     return symbol;
@@ -79,7 +78,7 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (BITIRICI OPERASYON - V2)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (FINAL OPERASYON V3)...');
     if (browser) try { await browser.close(); } catch (e) { }
 
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -107,13 +106,13 @@ async function startTradingViewConnection() {
                 };
                 const sessionId = 'qs_' + Math.random().toString(36).substring(7);
                 ws.send(constructMessage('quote_create_session', [sessionId]));
-                ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
+                ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name', 'short_name']));
                 let i = 0;
                 const addBatch = () => {
                     if (i >= symbols.length) return;
-                    const chunk = symbols.slice(i, i + 35);
+                    const chunk = symbols.slice(i, i + 30); // Daha güvenli chunk size
                     ws.send(constructMessage('quote_add_symbols', [sessionId, ...chunk]));
-                    i += 35;
+                    i += 30;
                     setTimeout(addBatch, 1500);
                 };
                 setTimeout(addBatch, 5000);
@@ -153,6 +152,7 @@ function processRawData(rawData) {
 
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
+                if (symbol === '399001') symbol = 'SZSE'; // SZSE Geri Dönüş Fix
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
                 if (values.lp) latestPrices[symbol].price = values.lp;
