@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3002;
-const API_SECRET = 'EsMenkul_Secret_2026'; // 🛡️ SENİN ÖZEL ŞİFREN
+const API_SECRET = 'EsMenkul_Secret_2026';
 
 app.use(cors());
 app.use(express.static(path.join(__dirname, '../')));
@@ -45,11 +45,10 @@ const wss = new WebSocketServer({
 let browser = null;
 let page = null;
 let latestPrices = {};
-let usdTryRate = 34.20; // Default, anlık güncellenecek
+let usdTryRate = 34.20;
+let lastDataTime = Date.now();
 
-// 🎯 KESİN VE SON NOKTA ATIŞI MAPPING
 const symbolMapping = {
-    // ENDEKSLER (Indices)
     'XSINA': 'BIST:XUSIN',
     'CAC40': 'TVC:CAC40',
     'NI225': 'TVC:NI225',
@@ -60,8 +59,6 @@ const symbolMapping = {
     'HSI': 'TVC:HSI',
     'NDX': 'TVC:NDX',
     'SPX': 'TVC:SPX',
-
-    // EMTIA (Commodities)
     'BRENT': 'TVC:UKOIL',
     'GLDGR': 'FX_IDC:XAUTRYG',
     'XAUTRY': 'FX_IDC:XAUTRY',
@@ -71,13 +68,9 @@ const symbolMapping = {
     'COPPER': 'COMEX:HG1!',
     'GOLD': 'TVC:GOLD',
     'SILVER': 'TVC:SILVER',
-
-    // BIST HİSSELERİ (Fix)
     'TEKFEN': 'BIST:TKFEN',
     'KOZAA': 'BIST:KOZAA',
     'BEKO': 'BIST:ARCLK',
-
-    // KRIPTO (USDT Çiftleri - Kurla TL'ye dönecekler)
     'MKRTRY': 'BINANCE:MKRUSDT',
     'FTMTRY': 'BINANCE:FTMUSDT',
     'EOSTRY': 'BINANCE:EOSUSDT',
@@ -107,7 +100,7 @@ function getSymbolForCategory(symbol, category) {
 }
 
 function prepareAllSymbols() {
-    const formattedSymbols = ['FX_IDC:USDTRY']; // Her zaman USD kurunu çek
+    const formattedSymbols = ['FX_IDC:USDTRY'];
     Object.entries(symbolsData).forEach(([category, symbols]) => {
         symbols.forEach(sym => { formattedSymbols.push(getSymbolForCategory(sym, category)); });
     });
@@ -115,7 +108,9 @@ function prepareAllSymbols() {
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (TL DÖNÜŞÜM MOTORU V1)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (MAX FLOW V2)...');
+    lastDataTime = Date.now();
+
     if (browser) try { await browser.close(); } catch (e) { }
 
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
@@ -160,15 +155,36 @@ async function startTradingViewConnection() {
         };
         window.WebSocket.prototype = NativeWebSocket.prototype;
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
+
+        // HEARTBEAT: Keep the page interaction alive
+        setInterval(() => {
+            window.scrollBy(0, 1);
+            window.scrollBy(0, -1);
+        }, 15000);
     }, allSymbols);
 
-    try { await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 }); } catch (e) { setTimeout(startTradingViewConnection, 10000); }
+    try {
+        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
+        console.log('✅ TradingView Sayfası Açıldı.');
+    } catch (e) {
+        console.log('❌ Sayfa yükleme hatası, tekrar denenecek.');
+        setTimeout(startTradingViewConnection, 10000);
+    }
 }
+
+// Watchdog: If no data for 5 minutes, restart
+setInterval(() => {
+    if (Date.now() - lastDataTime > 300000) {
+        console.log('⚠️ Veri akışı durdu! Yeniden bağlanılıyor...');
+        startTradingViewConnection();
+    }
+}, 60000);
 
 const reverseMapping = {};
 Object.entries(symbolMapping).forEach(([key, value]) => { reverseMapping[value] = key; });
 
 function processRawData(rawData) {
+    lastDataTime = Date.now();
     const regex = /~m~(\d+)~m~/g;
     let match;
     while ((match = regex.exec(rawData)) !== null) {
@@ -187,33 +203,17 @@ function processRawData(rawData) {
                 let tvTicker = symbolRaw.split(',')[0].trim();
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
-                // Kur Güncelleme
-                if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
-                    usdTryRate = values.lp;
-                }
-
-                // Normalizasyon ve TL Dönüşümü
+                if (tvTicker === 'FX_IDC:USDTRY' && values.lp) usdTryRate = values.lp;
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
                 if (symbol === 'ARCLK') symbol = 'BEKO';
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
                 if (symbol === '399001') symbol = 'SZSE';
 
                 let finalPrice = values.lp;
-
-                // 💰 TL DÖNÜŞÜM MANTIĞI 💰
                 if (finalPrice) {
-                    // 1. Kripto USDT'den TRY'ye çevrim
-                    if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
-                    // 2. Amerikan Hisseleri (STOCKS) -> TL
-                    else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
-                    // 3. Global Emtialar (USD olanlar) -> TL
-                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
+                    if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) finalPrice = finalPrice * usdTryRate;
+                    else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) finalPrice = finalPrice * usdTryRate;
+                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) finalPrice = finalPrice * usdTryRate;
                 }
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
@@ -223,11 +223,7 @@ function processRawData(rawData) {
                 if (latestPrices[symbol].price) {
                     const broadcastMsg = JSON.stringify({
                         type: 'price_update',
-                        data: {
-                            symbol: symbol,
-                            price: latestPrices[symbol].price,
-                            changePercent: latestPrices[symbol].changePercent
-                        }
+                        data: { symbol: symbol, price: latestPrices[symbol].price, changePercent: latestPrices[symbol].changePercent }
                     });
                     wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                 }
