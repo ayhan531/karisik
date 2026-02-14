@@ -3,8 +3,8 @@ services:
     name: karisik
     env: node
     region: frankfurt
-    buildCommand: npm install && npx playwright install chromium
-    startCommand: npm start
+    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=./.playwright npx playwright install chromium
+    startCommand: PLAYWRIGHT_BROWSERS_PATH=./.playwright npm start
     envVars:
       - key: NODE_ENV
         value: production
