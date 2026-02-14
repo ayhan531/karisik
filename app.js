@@ -69,6 +69,17 @@ class TradingApp {
         };
     }
 
+    // Fiyat Formatlama (Crypto ve FX için hassas ayar)
+    formatPrice(price) {
+        if (price === undefined || price === null) return 'Bekleniyor';
+        if (typeof price !== 'number') return price;
+
+        if (price < 0.0001) return price.toFixed(8);
+        if (price < 1) return price.toFixed(6);
+        if (price < 10) return price.toFixed(4);
+        return price.toFixed(2);
+    }
+
     // Gerçek fiyat güncellemesi
     handlePriceUpdate(data) {
         // Server zaten normalize edilmiş sembol gönderiyor (örn: BTC, THYAO)
@@ -83,8 +94,8 @@ class TradingApp {
             const oldPrice = parseFloat(priceEl.innerText.replace(/[^0-9.-]/g, '')) || 0;
             const newPrice = parseFloat(data.price);
 
-            // Fiyatı formatla
-            priceEl.innerText = newPrice.toFixed(2);
+            // Fiyatı formatla (Akıllı)
+            priceEl.innerText = this.formatPrice(newPrice);
 
             // Flash animasyonu
             if (newPrice > oldPrice) {
@@ -138,7 +149,7 @@ class TradingApp {
 
             // EN SON VERİYİ GÖSTER - "..." KULLANMA
             // Eğer veri varsa göster, yoksa "Bekleniyor" desin ama bir kere geldikten sonra hep görünsün
-            const price = cachedData?.price !== undefined ? cachedData.price.toFixed(2) : 'Bekleniyor';
+            const price = cachedData?.price !== undefined ? this.formatPrice(cachedData.price) : 'Bekleniyor';
             const change = cachedData?.changePercent || 0;
             const isPositive = change >= 0;
 
