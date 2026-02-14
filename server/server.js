@@ -55,14 +55,40 @@ function getSymbolForCategory(symbol, category) {
 async function connectToTradingView() {
     console.log('🌐 Gerçek browser başlatılıyor...');
 
+    // Stealth args
+    const args = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-infobars',
+        '--window-position=0,0',
+        '--ignore-certifcate-errors',
+        '--ignore-certifcate-errors-spki-list',
+        '--disable-blink-features=AutomationControlled' // CRITICAL: Hides navigator.webdriver
+    ];
+
     browser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        headless: true, // Render'da mecburen true
+        args: args
     });
 
     const context = await browser.newContext({
         viewport: { width: 1920, height: 1080 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        locale: 'en-US',
+        timezoneId: 'America/New_York', // Render server konumuna göre değil, genel bir timezone
+        permissions: ['notifications'],
+        geolocation: { longitude: -74.006, latitude: 40.7128 },
+        hasTouch: false,
+        isMobile: false,
+        javaScriptEnabled: true,
+        colorScheme: 'dark'
+    });
+
+    // Stealth Scripts
+    await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+        });
     });
 
     page = await context.newPage();
@@ -93,15 +119,21 @@ async function connectToTradingView() {
         });
     });
 
-    // Daha hızlı yüklenen bir sayfa kullan
+    // Daha hızlı yüklenen bir sayfa kullan ve hata olursa logla
     try {
+        console.log('⏳ Sayfa yükleniyor...');
         await page.goto('https://www.tradingview.com/markets/cryptocurrencies/', {
             timeout: 60000,
             waitUntil: 'domcontentloaded'
         });
-        console.log('✅ Sayfa yüklendi');
+        console.log('✅ Sayfa başarıyla yüklendi!');
     } catch (e) {
-        console.log('⚠️ Sayfa tam yüklenemedi ama WebSocket dinleniyor');
+        console.error('⚠️ Sayfa tam yüklenemedi ama WebSocket dinleniyor. Hata:', e.message);
+        // Sayfa başlığını logla (belki 403 veya Cloudflare sayfasıdır)
+        try {
+            const title = await page.title();
+            console.log('📄 Sayfa Başlığı:', title);
+        } catch (err) { console.log('Başlık alınamadı'); }
     }
 
     // WebSocket mesajlarını dinle
