@@ -39,13 +39,19 @@ function getSymbolForCategory(symbol, category) {
     }
     if (category === 'EMTIA') {
         if (symbol === 'BRENT' || symbol === 'USOIL') return `TVC:${symbol}`;
+        // Altın ve Gümüş TL Pariteleri (FX_IDC veya ICE)
+        if (symbol === 'XAUTRY' || symbol === 'XAGTRY') return `FX_IDC:${symbol}`;
         if (symbol === 'XAUUSD' || symbol === 'XAGUSD') return `FX_IDC:${symbol}`;
         if (symbol === 'GLDGR') return `BIST:${symbol}`;
         if (symbol.includes('GRAM')) return `BIST:GLDGR`;
         return `TVC:${symbol}`;
     }
     if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
+    if (category === 'KRIPTO') {
+        // Binance TR (TRY) veya Binance Global (USDT)
+        // TradingView'de Crypto TRY çiftleri genelde BINANCE:BTCTRY şeklindedir
+        return `BINANCE:${symbol}`;
+    }
     if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
     if (category === 'STOCKS') return `NASDAQ:${symbol}`;
 
@@ -221,8 +227,7 @@ function processRawData(rawData) {
 
                 if (!symbolRaw || !values) continue;
 
-                // Sadece Prefix'i kaldır (BIST:, TVC: vb.)
-                // Suffix (USDT, TRY) kalsın ki symbols.js ile eşleşsin.
+                // Sadece Prefix'i kaldır. Suffix (TRY, USDT) kalsın.
                 const symbol = symbolRaw.split(':').pop();
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
