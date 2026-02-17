@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EsMenkul Admin Paneli</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0f172a;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 10px;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #94a3b8;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        button.danger {
+            background: #ef4444;
+        }
+
+        button.danger:hover {
+            background: #dc2626;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #334155;
+        }
+
+        th {
+            color: #94a3b8;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .active {
+            background: #059669;
+            color: white;
+        }
+
+        .override {
+            background: #d97706;
+            color: white;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        .modal-content {
+            background: #1e293b;
+            margin: 10% auto;
+            padding: 20px;
+            width: 50%;
+            border-radius: 8px;
+        }
+
+        .close {
+            float: right;
+            cursor: pointer;
+            font-size: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🛠️ Yönetim Paneli</h1>
+
+        <!-- Global Settings -->
+        <div class="card">
+            <h3>Genel Ayarlar</h3>
+            <div class="form-group">
+                <label>Gecikme (ms):</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="globalDelay" placeholder="0">
+                    <button onclick="updateDelay()">Ayarla</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Yeni Sembol Ekle (TradingView Kodu):</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newSymbol" placeholder="Örn: BIST:GUBRF veya BINANCE:AVAXUSDT">
+                    <button onclick="addSymbol()">Ekle</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Symbol List -->
+        <div class="card">
+            <h3>Sembol Yönetimi</h3>
+            <input type="text" id="monitorSearch" placeholder="Sembol Ara..." style="margin-bottom: 15px;"
+                onkeyup="renderTable()">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sembol</th>
+                        <th>Fiyat</th>
+                        <th>Durum</th>
+                        <th>Override</th>
+                        <th>İşlem</th>
+                    </tr>
+                </thead>
+                <tbody id="symbolTableBody">
+                    <!-- JS ile dolacak -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Düzenle</h2>
+            <div class="form-group">
+                <label>Mod:</label>
+                <select id="overrideType" onchange="toggleInputs()">
+                    <option value="none">Canlı (Normal)</option>
+                    <option value="fixed">Sabit Fiyat</option>
+                    <option value="multiplier">Yüzde Çarpanı</option>
+                </select>
+            </div>
+            <div class="form-group" id="fixedInputGroup" style="display:none;">
+                <label>Sabit Fiyat (TL):</label>
+                <input type="number" id="fixedPrice" step="0.01">
+            </div>
+            <div class="form-group" id="multiplierInputGroup" style="display:none;">
+                <label>Çarpan (Örn: 1.05 = %5 Artır):</label>
+                <input type="number" id="multiplierValue" step="0.01" value="1.00">
+            </div>
+            <button onclick="saveOverride()">Kaydet</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

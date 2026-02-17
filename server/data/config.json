@@ -1,0 +1,13 @@
+{
+  "symbols": [
+    "BIST:GUBRF",
+    "BIST:THYAO"
+  ],
+  "overrides": {
+    "BIST:GUBRF": {
+      "type": "fixed",
+      "value": 500
+    }
+  },
+  "delay": 0
+}

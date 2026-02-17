@@ -4,6 +4,9 @@ import cors from 'cors';
 import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bodyParser from 'body-parser';
+import adminRoutes from './routes/admin.js';
+import fs from 'fs';
 import { symbolsData } from '../symbols.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,7 +17,11 @@ const PORT = process.env.PORT || 3002;
 const API_SECRET = 'EsMenkul_Secret_2026';
 
 app.use(cors());
+app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../')));
+
+// Admin Router
+app.use('/admin', adminRoutes);
 
 app.get('/api/prices', (req, res) => {
     const clientKey = req.headers['x-api-key'];
@@ -47,6 +54,37 @@ let page = null;
 let latestPrices = {};
 let usdTryRate = 34.20;
 let lastDataTime = Date.now();
+let activeSymbols = [];
+let globalDelay = 0;
+let priceOverrides = {};
+
+// Admin Hooks
+app.locals.addSymbolToStream = (symbol) => {
+    console.log(`🆕 Yeni Sembol Eklendi: ${symbol}`);
+    if (page && !activeSymbols.includes(symbol)) {
+        activeSymbols.push(symbol);
+        startTradingViewConnection();
+    }
+};
+
+app.locals.updateOverrides = (overrides) => {
+    console.log('✏️ Fiyat Override Güncellendi');
+    priceOverrides = overrides;
+};
+
+app.locals.updateDelay = (delay) => {
+    console.log(`⏱️ Gecikme Ayarlandı: ${delay}ms`);
+    globalDelay = delay;
+};
+
+app.locals.getActiveSymbols = () => {
+    // Return all symbols being monitored (simplified list)
+    return activeSymbols.map(s => {
+        // Reverse map if possible for clean names
+        const clean = reverseMapping[s] || s.split(':').pop();
+        return clean;
+    });
+};
 
 const symbolMapping = {
     'XSINA': 'BIST:XUSIN',
@@ -101,14 +139,32 @@ function getSymbolForCategory(symbol, category) {
 
 function prepareAllSymbols() {
     const formattedSymbols = ['FX_IDC:USDTRY'];
+
+    // Default Symbols
     Object.entries(symbolsData).forEach(([category, symbols]) => {
         symbols.forEach(sym => { formattedSymbols.push(getSymbolForCategory(sym, category)); });
     });
-    return [...new Set(formattedSymbols)];
+
+    // Config Symbols
+    try {
+        const configFile = path.join(__dirname, 'data/config.json');
+        if (fs.existsSync(configFile)) {
+            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+            if (config.symbols) {
+                config.symbols.forEach(sym => formattedSymbols.push(getSymbolForCategory(sym, 'CUSTOM')));
+            }
+            if (config.overrides) priceOverrides = config.overrides;
+            if (config.delay) globalDelay = config.delay;
+        }
+    } catch (e) { console.error('Config load error:', e); }
+
+    const uniqueSymbols = [...new Set(formattedSymbols)];
+    activeSymbols = uniqueSymbols;
+    return uniqueSymbols;
 }
 
 async function startTradingViewConnection() {
-    console.log('🌐 TradingView Bağlantısı Başlatılıyor (MAX FLOW V2)...');
+    console.log('🌐 TradingView Bağlantısı Başlatılıyor (ADMIN CONTROLLED)...');
     lastDataTime = Date.now();
 
     if (browser) try { await browser.close(); } catch (e) { }
@@ -156,7 +212,6 @@ async function startTradingViewConnection() {
         window.WebSocket.prototype = NativeWebSocket.prototype;
         window.WebSocket.OPEN = NativeWebSocket.OPEN;
 
-        // HEARTBEAT: Keep the page interaction alive
         setInterval(() => {
             window.scrollBy(0, 1);
             window.scrollBy(0, -1);
@@ -172,7 +227,6 @@ async function startTradingViewConnection() {
     }
 }
 
-// Watchdog: If no data for 5 minutes, restart
 setInterval(() => {
     if (Date.now() - lastDataTime > 300000) {
         console.log('⚠️ Veri akışı durdu! Yeniden bağlanılıyor...');
@@ -185,6 +239,18 @@ Object.entries(symbolMapping).forEach(([key, value]) => { reverseMapping[value] 
 
 function processRawData(rawData) {
     lastDataTime = Date.now();
+
+    // Global Delay implementation
+    if (globalDelay > 0) {
+        setTimeout(() => {
+            _processDataInternal(rawData);
+        }, globalDelay);
+    } else {
+        _processDataInternal(rawData);
+    }
+}
+
+function _processDataInternal(rawData) {
     const regex = /~m~(\d+)~m~/g;
     let match;
     while ((match = regex.exec(rawData)) !== null) {
@@ -203,33 +269,39 @@ function processRawData(rawData) {
                 let tvTicker = symbolRaw.split(',')[0].trim();
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
-                // Normalizasyon ve TL Dönüşümü
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
                 if (symbol === 'ARCLK') symbol = 'BEKO';
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
                 if (symbol === '399001') symbol = 'SZSE';
 
-                // Dolar/TL kurunu güncelle ama kendine conversion yapma
                 if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
                     usdTryRate = values.lp;
-                    symbol = 'USDTRY'; // Sembol adını zorla sabitle
+                    symbol = 'USDTRY';
                 }
 
                 let finalPrice = values.lp;
-                
-                // 💰 TL DÖNÜŞÜM MANTIĞI 💰
-                if (finalPrice && symbol !== 'USDTRY') { // USDTRY'yi dönüştürme
-                    // 1. Kripto USDT'den TRY'ye çevrim
+
+                if (finalPrice && symbol !== 'USDTRY') {
                     if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) {
                         finalPrice = finalPrice * usdTryRate;
                     }
-                    // 2. Amerikan Hisseleri (STOCKS) -> TL
                     else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) {
                         finalPrice = finalPrice * usdTryRate;
                     }
-                    // 3. Global Emtialar (USD olanlar) -> TL
                     else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) {
                         finalPrice = finalPrice * usdTryRate;
+                    }
+                }
+
+                // 🛑 OVERRIDE KONTROLÜ
+                if (priceOverrides[symbol]) {
+                    const override = priceOverrides[symbol];
+                    if (override.type === 'fixed') {
+                        finalPrice = override.value;
+                    } else if (override.type === 'multiplier') {
+                        if (finalPrice) {
+                            finalPrice = finalPrice * override.value;
+                        }
                     }
                 }
 
