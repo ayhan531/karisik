@@ -288,7 +288,10 @@ function _processDataInternal(rawData) {
                     else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) {
                         finalPrice = finalPrice * usdTryRate;
                     }
-                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) {
+                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER', 'PLATINUM', 'PALLADIUM', 'SOYBEAN', 'SUGAR', 'COFFEE', 'COTTON', 'XAUUSD', 'XAGUSD'].includes(symbol)) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
+                    else if (['NDX', 'SPX', 'DJI', 'DAX', 'UKX', 'CAC40', 'NI225', 'SZSE', 'HSI'].includes(symbol)) {
                         finalPrice = finalPrice * usdTryRate;
                     }
                 }
