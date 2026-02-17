@@ -203,17 +203,34 @@ function processRawData(rawData) {
                 let tvTicker = symbolRaw.split(',')[0].trim();
                 let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
 
-                if (tvTicker === 'FX_IDC:USDTRY' && values.lp) usdTryRate = values.lp;
+                // Normalizasyon ve TL Dönüşümü
                 if (symbol === 'TKFEN') symbol = 'TEKFEN';
                 if (symbol === 'ARCLK') symbol = 'BEKO';
                 if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
                 if (symbol === '399001') symbol = 'SZSE';
 
+                // Dolar/TL kurunu güncelle ama kendine conversion yapma
+                if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
+                    usdTryRate = values.lp;
+                    symbol = 'USDTRY'; // Sembol adını zorla sabitle
+                }
+
                 let finalPrice = values.lp;
-                if (finalPrice) {
-                    if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) finalPrice = finalPrice * usdTryRate;
-                    else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) finalPrice = finalPrice * usdTryRate;
-                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) finalPrice = finalPrice * usdTryRate;
+                
+                // 💰 TL DÖNÜŞÜM MANTIĞI 💰
+                if (finalPrice && symbol !== 'USDTRY') { // USDTRY'yi dönüştürme
+                    // 1. Kripto USDT'den TRY'ye çevrim
+                    if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
+                    // 2. Amerikan Hisseleri (STOCKS) -> TL
+                    else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
+                    // 3. Global Emtialar (USD olanlar) -> TL
+                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER'].includes(symbol)) {
+                        finalPrice = finalPrice * usdTryRate;
+                    }
                 }
 
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
