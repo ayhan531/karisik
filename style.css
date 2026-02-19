@@ -294,3 +294,64 @@ body {
 .nav-item .icon {
     font-size: 1.2rem;
 }
+
+/* --- Responsive Adjustments --- */
+@media screen and (max-width: 600px) {
+    .top-bar {
+        padding: 0.8rem;
+    }
+
+    .main-logo {
+        height: 20px;
+    }
+
+    .tab-btn {
+        padding: 0.8rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .controls {
+        padding: 0.8rem;
+    }
+
+    .list-header, .symbol-row {
+        grid-template-columns: 1.5fr 1fr 1fr; 
+        padding: 0.8rem;
+    }
+
+    .col-spread, .symbol-row > div:nth-child(3) {
+        display: none !important;
+    }
+
+    .sym-info {
+        gap: 0.5rem;
+    }
+
+    .sym-logo {
+        width: 20px;
+        height: 20px;
+    }
+
+    .sym-name {
+        font-size: 0.8rem;
+    }
+
+    .price-val {
+        font-size: 0.85rem;
+    }
+
+    .change-val {
+        font-size: 0.75rem;
+    }
+
+    .modal-content {
+        margin: 5% auto;
+        width: 95%;
+        height: 80%;
+    }
+
+    .close-modal {
+        right: 10px;
+        top: -40px;
+    }
+}

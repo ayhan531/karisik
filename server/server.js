@@ -223,8 +223,10 @@ async function startTradingViewConnection() {
     ]);
 
     page = await context.newPage();
-    await page.exposeFunction('onDataReceived', (data) => processRawData(data));
-    await page.exposeFunction('onBrowserReloadRequest', () => { setTimeout(startTradingViewConnection, 5000); });
+
+    // Safety check for already registered functions
+    try { await page.exposeFunction('onDataReceived', (data) => processRawData(data)); } catch (e) { }
+    try { await page.exposeFunction('onBrowserReloadRequest', () => { setTimeout(startTradingViewConnection, 5000); }); } catch (e) { }
 
     const allSymbols = prepareAllSymbols();
 

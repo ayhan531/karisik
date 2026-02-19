@@ -129,6 +129,70 @@
             cursor: pointer;
             font-size: 24px;
         }
+
+        /* --- Admin Responsive --- */
+        @media screen and (max-width: 768px) {
+            .modal-content {
+                width: 90%;
+                margin: 20% auto;
+            }
+
+            table,
+            thead,
+            tbody,
+            th,
+            td,
+            tr {
+                display: block;
+            }
+
+            thead tr {
+                position: absolute;
+                top: -9999px;
+                left: -9999px;
+            }
+
+            tr {
+                border: 1px solid #334155;
+                margin-bottom: 10px;
+                background: #1e293b;
+                border-radius: 8px;
+                padding: 10px;
+            }
+
+            td {
+                border: none;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                position: relative;
+                padding-left: 50%;
+                text-align: right;
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+            }
+
+            td:last-child {
+                border-bottom: none;
+            }
+
+            td:before {
+                position: absolute;
+                left: 10px;
+                width: 45%;
+                padding-right: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: bold;
+                color: #94a3b8;
+                content: attr(data-label);
+            }
+
+            /* Actions button full width in its "row" */
+            td button {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 

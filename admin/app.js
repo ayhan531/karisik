@@ -67,11 +67,11 @@ function renderTable() {
         const tr = document.createElement('tr');
         tr.id = `row-${sym}`; // Add ID for easy access
         tr.innerHTML = `
-            <td>${sym}</td>
-            <td class="price-cell">Bekleniyor...</td>
-            <td>${statusHtml}</td>
-            <td>${overrideValue}</td>
-            <td>
+            <td data-label="Sembol">${sym}</td>
+            <td data-label="Fiyat" class="price-cell">Bekleniyor...</td>
+            <td data-label="Durum">${statusHtml}</td>
+            <td data-label="Override">${overrideValue}</td>
+            <td data-label="İşlem">
                 <button onclick="openEditModal('${sym}')">Düzenle</button>
             </td>
         `;
