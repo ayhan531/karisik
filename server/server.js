@@ -56,13 +56,18 @@ const isAuthenticated = (req, res, next) => {
 app.use('/api/auth', authLimiter, authRoutes);
 
 // Static files (Login page should be public)
-app.use('/admin/login.html', express.static(path.join(__dirname, '../admin/login.html')));
+app.get('/admin/login.html', (req, res) => {
+    res.sendFile(path.join(__dirname, '../admin/login.html'));
+});
 
 // Protected Admin Routes
+// Explicitly protect the admin directory
 app.use('/admin', isAuthenticated, express.static(path.join(__dirname, '../admin')));
 app.use('/api/admin', isAuthenticated, adminRoutes);
 
-app.use(express.static(path.join(__dirname, '../')));
+// Public root
+// Be careful not to expose sensitive files from root
+app.use(express.static(path.join(__dirname, '../'), { index: 'index.html' }));
 
 app.get('/api/prices', (req, res) => {
     const clientKey = req.headers['x-api-key'];
