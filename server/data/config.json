@@ -1,13 +1,10 @@
 {
   "symbols": [
     "BIST:GUBRF",
-    "BIST:THYAO"
+    "BIST:THYAO",
+    "BINANCE:BTCUSDT",
+    "USDTRY"
   ],
-  "overrides": {
-    "BIST:GUBRF": {
-      "type": "fixed",
-      "value": 500
-    }
-  },
-  "delay": 0
+  "overrides": {},
+  "delay": 100
 }

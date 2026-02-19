@@ -5,7 +5,10 @@ import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
+import session from 'express-session';
+import rateLimit from 'express-rate-limit';
 import adminRoutes from './routes/admin.js';
+import authRoutes from './routes/auth.js';
 import fs from 'fs';
 import { symbolsData } from '../symbols.js';
 
@@ -18,10 +21,48 @@ const API_SECRET = 'EsMenkul_Secret_2026';
 
 app.use(cors());
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../')));
 
-// Admin Router
-app.use('/admin', adminRoutes);
+// Session Configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'EsMenkul_Secure_2026_Session_Secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // Set to true if using HTTPS
+        httpOnly: true,
+        maxAge: 1000 * 60 * 60 * 24 // 24 hours
+    }
+}));
+
+// Rate Limiting for Auth
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // Limit each IP to 10 login attempts per window
+    message: { success: false, message: 'Çok fazla giriş denemesi. Lütfen 15 dakika sonra tekrar deneyin.' }
+});
+
+// Authentication Middleware
+const isAuthenticated = (req, res, next) => {
+    if (req.session.authenticated) {
+        return next();
+    }
+    if (req.path.startsWith('/api/')) {
+        return res.status(401).json({ success: false, message: 'Yetkisiz erişim.' });
+    }
+    res.redirect('/admin/login.html');
+};
+
+// Auth Routes
+app.use('/api/auth', authLimiter, authRoutes);
+
+// Static files (Login page should be public)
+app.use('/admin/login.html', express.static(path.join(__dirname, '../admin/login.html')));
+
+// Protected Admin Routes
+app.use('/admin', isAuthenticated, express.static(path.join(__dirname, '../admin')));
+app.use('/api/admin', isAuthenticated, adminRoutes);
+
+app.use(express.static(path.join(__dirname, '../')));
 
 app.get('/api/prices', (req, res) => {
     const clientKey = req.headers['x-api-key'];

@@ -1,17 +1,35 @@
-const API_URL = 'http://localhost:3002'; // Canlıda domain olacak
-
-// --- State ---
-let config = {};
+// --- API Wrapper ---
+async function apiFetch(url, options = {}) {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+        window.location.href = '/admin/login.html';
+        return;
+    }
+    return res;
+}
 
 // --- Load Config ---
 async function loadConfig() {
     try {
-        const res = await fetch(`${API_URL}/admin/config`);
+        const res = await apiFetch(`/api/admin/config`);
+        if (!res) return;
         config = await res.json();
         renderTable();
         document.getElementById('globalDelay').value = config.delay || 0;
     } catch (e) {
         console.error('Config load failed:', e);
+    }
+}
+
+async function logout() {
+    try {
+        const res = await fetch('/api/auth/logout', { method: 'POST' });
+        const result = await res.json();
+        if (result.success) {
+            window.location.href = '/admin/login.html';
+        }
+    } catch (e) {
+        console.error('Logout failed:', e);
     }
 }
 
@@ -65,7 +83,7 @@ function renderTable() {
 
 async function updateDelay() {
     const delay = document.getElementById('globalDelay').value;
-    await fetch(`${API_URL}/admin/delay`, {
+    await apiFetch(`/api/admin/delay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ delay })
@@ -77,7 +95,7 @@ async function addSymbol() {
     const symbol = document.getElementById('newSymbol').value.trim();
     if (!symbol) return;
 
-    await fetch(`${API_URL}/admin/symbol`, {
+    await apiFetch(`/api/admin/symbol`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol })
@@ -135,7 +153,7 @@ async function saveOverride() {
     }
     // If 'none', sending just symbol will be treated as delete in backend if both price/mult are undefined
 
-    await fetch(`${API_URL}/admin/override`, {
+    await apiFetch(`/api/admin/override`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -151,7 +169,8 @@ loadConfig();
 
 // --- WebSocket Connection ---
 // Secure connection with API Key
-const ws = new WebSocket(API_URL.replace('http', 'ws') + '?token=EsMenkul_Secret_2026');
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const ws = new WebSocket(`${wsProtocol}//${window.location.host}?token=EsMenkul_Secret_2026`);
 
 ws.onopen = () => {
     console.log('✅ WebSocket Bağlantısı Kuruldu');
