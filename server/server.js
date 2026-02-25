@@ -161,6 +161,12 @@ const symbolMapping = {
     'BEKO': 'BIST:ARCLK'
 };
 
+const nyseStocks = [
+    'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'MCD',
+    'NKE', 'WMT', 'TGT', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX',
+    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM'
+];
+
 function getSymbolForCategory(symbol, category) {
     if (symbolMapping[symbol]) return symbolMapping[symbol];
 
