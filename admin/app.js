@@ -36,6 +36,13 @@ async function loadConfig() {
     }
 }
 
+// Auto-refresh metrics every 30 seconds
+setInterval(() => {
+    if (document.visibilityState === 'visible') {
+        loadConfig();
+    }
+}, 30000);
+
 async function logout() {
     try {
         const res = await fetch('/api/auth/logout', { method: 'POST' });
@@ -431,11 +438,18 @@ function updatePriceCell(symbol, price) {
     if (row) {
         const priceCell = row.querySelector('.price-cell');
         if (priceCell) {
-            // Flash effect
-            const oldPrice = parseFloat(priceCell.innerText.replace(' TL', ''));
-            priceCell.innerText = `${price.toFixed(2)} TL`;
+            const oldPriceText = priceCell.innerText.replace(' TL', '');
+            const oldPrice = parseFloat(oldPriceText);
 
-            if (oldPrice !== price) {
+            // Dynamic Decimals: Small numbers need more precision
+            let formattedPrice;
+            if (price < 0.001) formattedPrice = price.toFixed(8);
+            else if (price < 1) formattedPrice = price.toFixed(4);
+            else formattedPrice = price.toFixed(2);
+
+            priceCell.innerText = `${formattedPrice} TL`;
+
+            if (!isNaN(oldPrice) && oldPrice !== price) {
                 priceCell.style.color = price > oldPrice ? '#4ade80' : '#f87171'; // Green/Red
                 setTimeout(() => priceCell.style.color = 'white', 500);
             }

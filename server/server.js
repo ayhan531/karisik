@@ -587,7 +587,11 @@ function _processDataInternal(rawData) {
                     let finalPrice = values.lp;
                     if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
                         usdTryRate = values.lp;
-                        symbol = 'USDTRY';
+                        // Force USDTRY symbol if we are processing this ticker
+                        if (!mappedSymbols.includes('USDTRY')) {
+                            // This ensures USDTRY stays updated even if not explicitly mapped
+                            symbol = 'USDTRY';
+                        }
                     }
 
                     let currency = values.currency_code || (tvTicker.includes('TRY') ? 'TRY' : 'USD');
