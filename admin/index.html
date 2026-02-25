@@ -239,6 +239,8 @@
             <div style="display: flex; gap: 15px; margin-bottom: 15px;">
                 <input type="text" id="monitorSearch" placeholder="Sembol Ara..." style="flex: 1; margin-bottom: 0;"
                     onkeyup="renderTable()">
+                <button id="bulkEditBtn" style="display: none; background: #d97706;"
+                    onclick="openBulkEditModal()">Seçilenleri Düzenle</button>
                 <button class="danger" id="bulkDeleteBtn" style="display: none;"
                     onclick="bulkDeleteSymbols()">Seçilenleri Sil</button>
             </div>
@@ -288,7 +290,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=3"></script>
 </body>
 
 </html>

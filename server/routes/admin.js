@@ -192,4 +192,34 @@ router.post('/symbols/bulk-delete', async (req, res) => {
     res.json({ success: true, symbols: config.symbols });
 });
 
+// 7. Toplu Override (Fiyat/Çarpan) Ekle
+router.post('/symbols/bulk-override', async (req, res) => {
+    const { symbols, price, multiplier } = req.body;
+    if (!Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({ error: 'Düzenlenecek semboller gerekli' });
+    }
+
+    const config = await getConfig();
+    if (!config.overrides) config.overrides = {};
+
+    symbols.forEach(symbol => {
+        if (price === undefined && multiplier === undefined) {
+            delete config.overrides[symbol];
+        } else {
+            config.overrides[symbol] = {
+                type: price !== undefined ? 'fixed' : 'multiplier',
+                value: price !== undefined ? parseFloat(price) : parseFloat(multiplier)
+            };
+        }
+    });
+
+    await saveConfig(config);
+
+    if (req.app.locals.updateOverrides) {
+        req.app.locals.updateOverrides(config.overrides);
+    }
+
+    res.json({ success: true, overrides: config.overrides });
+});
+
 export default router;

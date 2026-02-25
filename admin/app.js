@@ -69,7 +69,7 @@ function renderTable() {
         tr.id = `row-${sym}`;
         tr.innerHTML = `
             <td data-label="Seç">
-                ${isCustom ? `<input type="checkbox" class="symbol-checkbox" value="${sym}" onclick="updateBulkDeleteBtn()">` : ''}
+                <input type="checkbox" class="symbol-checkbox" value="${sym}" onclick="updateSelectButtons()">
             </td>
             <td data-label="Sembol">${sym}</td>
             <td data-label="Kategori" style="color: ${catColor}; font-size: 0.85em;">${category}</td>
@@ -84,7 +84,7 @@ function renderTable() {
     });
 
     document.getElementById('selectAllCheckbox').checked = false;
-    updateBulkDeleteBtn();
+    updateSelectButtons();
 }
 
 // --- Actions ---
@@ -117,9 +117,11 @@ async function addSymbol() {
 
 // --- Modal Logic ---
 let currentEditingSymbol = null;
+let isBulkEdit = false;
 
 function openEditModal(symbol, isCustom = false) {
     currentEditingSymbol = symbol;
+    isBulkEdit = false;
     document.getElementById('modalTitle').innerText = `Düzenle: ${symbol}`;
     document.getElementById('editModal').style.display = 'block';
 
@@ -138,7 +140,7 @@ function openEditModal(symbol, isCustom = false) {
         document.getElementById('multiplierValue').value = '1.00';
     }
 
-    // Sil butonu: sadece admin'in eklediği (custom) sembollerde görünsün
+    // Sil butonu: sadece admin'in eklediği (custom) sembollerde ve tekli düzenlemede görünsün
     const deleteBtn = document.getElementById('deleteSymbolBtn');
     if (isCustom) {
         deleteBtn.style.display = 'block';
@@ -146,6 +148,22 @@ function openEditModal(symbol, isCustom = false) {
     } else {
         deleteBtn.style.display = 'none';
     }
+
+    toggleInputs();
+}
+
+function openBulkEditModal() {
+    const checkedBoxes = document.querySelectorAll('.symbol-checkbox:checked');
+    if (checkedBoxes.length === 0) return;
+
+    isBulkEdit = true;
+    document.getElementById('modalTitle').innerText = `Toplu Düzenle (${checkedBoxes.length} Sembol)`;
+    document.getElementById('editModal').style.display = 'block';
+
+    document.getElementById('overrideType').value = 'none';
+    document.getElementById('fixedPrice').value = '';
+    document.getElementById('multiplierValue').value = '1.00';
+    document.getElementById('deleteSymbolBtn').style.display = 'none';
 
     toggleInputs();
 }
@@ -176,17 +194,22 @@ function toggleSelectAll() {
             cb.checked = isChecked;
         }
     });
-    updateBulkDeleteBtn();
+    updateSelectButtons();
 }
 
-function updateBulkDeleteBtn() {
+function updateSelectButtons() {
     const checkedBoxes = document.querySelectorAll('.symbol-checkbox:checked');
     const deleteBtn = document.getElementById('bulkDeleteBtn');
+    const editBtn = document.getElementById('bulkEditBtn');
+
     if (checkedBoxes.length > 0) {
         deleteBtn.style.display = 'block';
         deleteBtn.innerText = `Seçilenleri Sil (${checkedBoxes.length})`;
+        editBtn.style.display = 'block';
+        editBtn.innerText = `Seçilenleri Düzenle (${checkedBoxes.length})`;
     } else {
         deleteBtn.style.display = 'none';
+        editBtn.style.display = 'none';
     }
 }
 
@@ -219,20 +242,35 @@ function toggleInputs() {
 
 async function saveOverride() {
     const type = document.getElementById('overrideType').value;
-    let payload = { symbol: currentEditingSymbol };
 
+    let payload = {};
     if (type === 'fixed') {
         payload.price = document.getElementById('fixedPrice').value;
     } else if (type === 'multiplier') {
         payload.multiplier = document.getElementById('multiplierValue').value;
     }
-    // If 'none', sending just symbol will be treated as delete in backend if both price/mult are undefined
 
-    await apiFetch(`/api/admin/override`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+    if (isBulkEdit) {
+        const checkedBoxes = document.querySelectorAll('.symbol-checkbox:checked');
+        const symbolsToEdit = Array.from(checkedBoxes).map(cb => cb.value);
+        payload.symbols = symbolsToEdit;
+
+        await apiFetch(`/api/admin/symbols/bulk-override`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        document.getElementById('selectAllCheckbox').checked = false;
+
+    } else {
+        payload.symbol = currentEditingSymbol;
+        await apiFetch(`/api/admin/override`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+    }
 
     closeModal();
     await loadConfig();
