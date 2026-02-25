@@ -141,6 +141,7 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
 
     // Ham ismi TradingView formatına çevir
     const ticker = getSymbolForCategory(symbol, category);
+    if (!ticker) { console.log(`⚠️ Ticker dönüştürülemedi: ${symbol}`); return; }
     console.log(`📡 TradingView Ticker: ${ticker}`);
 
     // Reverse mapping'e ekle
@@ -151,26 +152,31 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
         activeSymbols.push(ticker);
     }
 
-    // Eğer mevcut sayfa var ve bağlantı açıksa, yeniden başlatmadan inject et
+    // Mevcut WS oturumuna inject etmeyi dene; başarısız olursa reconnect yap
     if (page) {
         page.evaluate((tvTicker) => {
-            if (window.tvSocket && window.tvSocket.readyState === 1) {
-                const constructMessage = (func, paramList) => {
-                    const json = JSON.stringify({ m: func, p: paramList });
-                    return `~m~${json.length}~m~${json}`;
-                };
-                // Mevcut session ID'yi bul
-                const sessionId = window._tvSessionId;
-                if (sessionId) {
-                    window.tvSocket.send(constructMessage('quote_add_symbols', [sessionId, tvTicker]));
-                    console.log('✅ Sembol anlık enjekte edildi:', tvTicker);
-                } else {
-                    console.warn('Session ID bulunamadı, tam yenileme yapılıyor');
+            try {
+                if (window.tvSocket && window.tvSocket.readyState === 1 && window._tvSessionId) {
+                    const constructMessage = (func, paramList) => {
+                        const json = JSON.stringify({ m: func, p: paramList });
+                        return `~m~${json.length}~m~${json}`;
+                    };
+                    window.tvSocket.send(constructMessage('quote_add_symbols', [window._tvSessionId, tvTicker]));
+                    return true;
                 }
+                return false;
+            } catch (e) {
+                return false;
             }
-        }, ticker).catch(() => {
-            // Sayfa hazır değilse tüm bağlantıyı yenile
-            startTradingViewConnection();
+        }, ticker).then(success => {
+            if (!success) {
+                console.log(`⚠️ Anlık enjeksiyon başarısız (${ticker}), reconnect başlatılıyor...`);
+                setTimeout(() => startTradingViewConnection(), 1000);
+            } else {
+                console.log(`✅ Sembol canlı enjekte edildi: ${ticker}`);
+            }
+        }).catch(() => {
+            setTimeout(() => startTradingViewConnection(), 1000);
         });
     } else {
         startTradingViewConnection();
