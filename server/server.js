@@ -117,6 +117,18 @@ let lastDataTime = Date.now();
 let activeSymbols = [];
 let globalDelay = 0;
 let priceOverrides = {};
+let pausedSymbols = new Set();
+
+// Metrics Helper
+app.locals.getMetrics = () => {
+    let wsCount = 0;
+    if (app.locals.wss) wsCount = app.locals.wss.clients.size;
+    return {
+        wsClients: wsCount,
+        lastDataTime: lastDataTime,
+        playwrightStatus: page ? 'Bağlı' : 'Koptu'
+    };
+};
 
 // MongoDB Bağlantısı ve Sunucu Başlatma
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBEw7vST9gH6@cluster0.z2s3t.mongodb.net/karisik?retryWrites=true&w=majority&appName=Cluster0')
@@ -130,6 +142,12 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
             if (config.overrides) {
                 // Mongoose map to plain JS object
                 priceOverrides = Object.fromEntries(config.overrides.entries());
+            }
+            if (config.symbols) {
+                config.symbols.forEach(s => {
+                    const sName = typeof s === 'string' ? s : s.name;
+                    if (s.paused) pausedSymbols.add(sName);
+                });
             }
         }
 
@@ -235,6 +253,12 @@ app.locals.removeSymbolFromStream = (symbol) => {
 app.locals.updateOverrides = (overrides) => {
     console.log('✏️ Fiyat Override Güncellendi');
     priceOverrides = overrides;
+};
+
+app.locals.updatePaused = (symbol, isPaused) => {
+    console.log(`⏸️ Sembol Duraklatma Güncellendi: ${symbol} = ${isPaused}`);
+    if (isPaused) pausedSymbols.add(symbol);
+    else pausedSymbols.delete(symbol);
 };
 
 app.locals.updateDelay = (delay) => {
@@ -555,14 +579,21 @@ function _processDataInternal(rawData) {
                 let finalPrice = values.lp;
                 let currency = values.currency_code || (tvTicker.includes('TRY') ? 'TRY' : 'USD');
 
+                // 🛑 PAUSED KONTROLÜ
+                if (pausedSymbols.has(symbol)) continue;
+
                 // 🛑 OVERRIDE KONTROLÜ
                 if (priceOverrides[symbol]) {
                     const override = priceOverrides[symbol];
-                    if (override.type === 'fixed') {
-                        finalPrice = override.value;
-                    } else if (override.type === 'multiplier') {
-                        if (finalPrice) {
-                            finalPrice = finalPrice * override.value;
+                    if (override.expiresAt && Date.now() > new Date(override.expiresAt).getTime()) {
+                        // Süresi dolmuş, yoksay
+                    } else {
+                        if (override.type === 'fixed') {
+                            finalPrice = override.value;
+                        } else if (override.type === 'multiplier') {
+                            if (finalPrice) {
+                                finalPrice = finalPrice * override.value;
+                            }
                         }
                     }
                 }

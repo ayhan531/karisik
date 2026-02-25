@@ -40,12 +40,12 @@ router.get('/config', async (req, res) => {
         config.symbols.map(s => (typeof s === 'string' ? s : s.name))
     );
 
-    // Özel sembolleri obje formatında hazırla (silinebilir)
+    // Özel sembolleri obje formatında hazırla
     const customSymbols = config.symbols.map(s => {
         if (typeof s === 'string') {
-            return { name: s.split(':').pop(), category: 'DİĞER', isCustom: true };
+            return { name: s.split(':').pop(), category: 'DİĞER', isCustom: true, paused: false };
         }
-        return { name: s.name, category: s.category || 'DİĞER', isCustom: true };
+        return { name: s.name, category: s.category || 'DİĞER', isCustom: true, paused: s.paused || false };
     });
 
     // Server'daki tüm aktif sembolleri al (symbols.js'den gelenler)
@@ -56,7 +56,7 @@ router.get('/config', async (req, res) => {
             syms.forEach(name => {
                 const cleanName = name.replace(/\s*\/\/.*/, '').trim(); // yorum satırlarını temizle
                 if (!customSymbolNames.has(cleanName)) {
-                    systemSymbols.push({ name: cleanName, category, isCustom: false });
+                    systemSymbols.push({ name: cleanName, category, isCustom: false, paused: false });
                 }
             });
         });
@@ -67,7 +67,8 @@ router.get('/config', async (req, res) => {
 
     res.json({
         ...config,
-        symbols: allSymbols
+        symbols: allSymbols,
+        metrics: req.app.locals.getMetrics ? req.app.locals.getMetrics() : null
     });
 });
 
@@ -109,10 +110,17 @@ router.post('/override', async (req, res) => {
         if (config.overrides) delete config.overrides[symbol];
     } else {
         if (!config.overrides) config.overrides = {};
-        config.overrides[symbol] = {
+
+        let overrideObj = {
             type: price !== undefined ? 'fixed' : 'multiplier',
             value: price !== undefined ? parseFloat(price) : parseFloat(multiplier)
         };
+
+        if (req.body.expiresIn) {
+            overrideObj.expiresAt = new Date(Date.now() + parseInt(req.body.expiresIn) * 60000);
+        }
+
+        config.overrides[symbol] = overrideObj;
     }
 
     await saveConfig(config);
@@ -206,10 +214,14 @@ router.post('/symbols/bulk-override', async (req, res) => {
         if (price === undefined && multiplier === undefined) {
             delete config.overrides[symbol];
         } else {
-            config.overrides[symbol] = {
+            let overrideObj = {
                 type: price !== undefined ? 'fixed' : 'multiplier',
                 value: price !== undefined ? parseFloat(price) : parseFloat(multiplier)
             };
+            if (req.body.expiresIn) {
+                overrideObj.expiresAt = new Date(Date.now() + parseInt(req.body.expiresIn) * 60000);
+            }
+            config.overrides[symbol] = overrideObj;
         }
     });
 
@@ -257,6 +269,64 @@ router.post('/symbol/category', async (req, res) => {
     }
 
     res.json({ success: true, symbols: config.symbols });
+});
+
+// 9. Sembol Duraklat/Devam Et (Pause/Resume)
+router.post('/symbol/pause', async (req, res) => {
+    const { symbol, paused } = req.body;
+    if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
+
+    const config = await getConfig();
+    let found = false;
+
+    if (config.symbols) {
+        config.symbols = config.symbols.map(s => {
+            const sName = typeof s === 'string' ? s : s.name;
+            if (sName === symbol || sName.split(':').pop() === symbol) {
+                found = true;
+                return {
+                    name: sName,
+                    category: s.category || 'DİĞER',
+                    isCustom: typeof s === 'string' ? true : s.isCustom,
+                    paused: paused
+                };
+            }
+            return s;
+        });
+    }
+
+    if (!found) {
+        if (!config.symbols) config.symbols = [];
+        config.symbols.push({ name: symbol, category: 'DİĞER', isCustom: false, paused: paused });
+    }
+
+    await saveConfig(config);
+
+    if (req.app.locals.updatePaused) {
+        req.app.locals.updatePaused(symbol, paused);
+    }
+
+    res.json({ success: true, paused: paused });
+});
+
+// 10. Kategori Ekle/Sil
+router.post('/categories', async (req, res) => {
+    const { action, category } = req.body; // action: 'add' or 'delete'
+    if (!category) return res.status(400).json({ error: 'Kategori adı gerekli' });
+
+    const config = await getConfig();
+    if (!config.categories) {
+        config.categories = ['BORSA ISTANBUL', 'KRIPTO', 'EMTIA', 'ENDEKSLER', 'EXCHANGE', 'STOCKS', 'DİĞER'];
+    }
+
+    if (action === 'add' && !config.categories.includes(category)) {
+        config.categories.push(category);
+    } else if (action === 'delete') {
+        config.categories = config.categories.filter(c => c !== category);
+    }
+
+    await saveConfig(config);
+    res.json({ success: true, categories: config.categories });
 });
 
 export default router;

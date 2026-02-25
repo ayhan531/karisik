@@ -5,12 +5,18 @@ const configSchema = new mongoose.Schema({
     symbols: [{
         name: String,
         category: String,
-        isCustom: { type: Boolean, default: true }
+        isCustom: { type: Boolean, default: true },
+        paused: { type: Boolean, default: false }
     }],
+    categories: {
+        type: [String],
+        default: ['BORSA ISTANBUL', 'KRIPTO', 'EMTIA', 'ENDEKSLER', 'EXCHANGE', 'STOCKS', 'DİĞER']
+    },
     overrides: {
         type: Map, of: new mongoose.Schema({
             type: String,
-            value: Number
+            value: Number,
+            expiresAt: { type: Date }
         }, { _id: false })
     },
     delay: { type: Number, default: 0 }

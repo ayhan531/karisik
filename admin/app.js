@@ -14,6 +14,21 @@ async function loadConfig() {
         const res = await apiFetch(`/api/admin/config`);
         if (!res) return;
         config = await res.json();
+
+        // Update Metrics
+        if (config.metrics) {
+            document.getElementById('wsClientsMetric').innerText = config.metrics.wsClients;
+            document.getElementById('pwStatusMetric').innerText = config.metrics.playwrightStatus;
+
+            const lastData = config.metrics.lastDataTime;
+            if (lastData) {
+                const diffSec = Math.floor((Date.now() - lastData) / 1000);
+                document.getElementById('lastDataMetric').innerText = `${diffSec} sn önce`;
+                document.getElementById('lastDataMetric').style.color = diffSec > 300 ? '#ef4444' : '#10b981';
+            }
+        }
+
+        renderCategories();
         renderTable();
         document.getElementById('globalDelay').value = config.delay || 0;
     } catch (e) {
@@ -31,6 +46,59 @@ async function logout() {
     } catch (e) {
         console.error('Logout failed:', e);
     }
+}
+
+// --- Categories Management ---
+function renderCategories() {
+    const list = document.getElementById('categoryList');
+    const newCatSelect = document.getElementById('newCategory');
+    const editCatSelect = document.getElementById('editCategory');
+
+    list.innerHTML = '';
+    newCatSelect.innerHTML = '';
+    editCatSelect.innerHTML = '';
+
+    const categories = config.categories || [];
+
+    categories.forEach(cat => {
+        // Dropdown additions
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.innerHTML = cat;
+        newCatSelect.appendChild(opt.cloneNode(true));
+        editCatSelect.appendChild(opt);
+
+        // UI Tag List addition
+        const div = document.createElement('div');
+        div.style.cssText = 'background: #0f172a; padding: 5px 15px; border-radius: 20px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px;';
+        div.innerHTML = `
+            ${cat}
+            <span style="color: #ef4444; cursor: pointer; font-weight: bold;" onclick="deleteCategory('${cat}')">&times;</span>
+        `;
+        list.appendChild(div);
+    });
+}
+
+async function addCategory() {
+    const name = document.getElementById('newCategoryName').value.trim().toUpperCase();
+    if (!name) return;
+    await apiFetch('/api/admin/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', category: name })
+    });
+    document.getElementById('newCategoryName').value = '';
+    await loadConfig();
+}
+
+async function deleteCategory(name) {
+    if (!confirm(`'${name}' kategorisini silmek istediğinizden emin misiniz?`)) return;
+    await apiFetch('/api/admin/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', category: name })
+    });
+    await loadConfig();
 }
 
 // --- Render Table ---
@@ -56,10 +124,21 @@ function renderTable() {
         let statusHtml = '<span class="status-badge active">Canlı</span>';
         let overrideValue = '-';
 
-        if (hasOverride) {
+        if (symObj.paused) {
+            statusHtml = '<span class="status-badge paused">Durduruldu</span>';
+        } else if (hasOverride) {
             statusHtml = '<span class="status-badge override">Override</span>';
             if (override.type === 'fixed') overrideValue = `Sabit: ${override.value} TL`;
             else overrideValue = `Çarpan: ${override.value}x`;
+
+            if (override.expiresAt) {
+                const expDate = new Date(override.expiresAt);
+                if (expDate > new Date()) {
+                    overrideValue += `<br><span style="font-size: 10px; color: #f59e0b;">Bitiş: ${expDate.getHours()}:${String(expDate.getMinutes()).padStart(2, '0')}</span>`;
+                } else {
+                    statusHtml = '<span class="status-badge active">Canlı (Süresi Doldu)</span>';
+                }
+            }
         }
 
         // Renk: custom = mavi, sistem = yeşil
@@ -76,7 +155,11 @@ function renderTable() {
             <td data-label="Fiyat" class="price-cell">Bekleniyor...</td>
             <td data-label="Durum">${statusHtml}</td>
             <td data-label="Override">${overrideValue}</td>
-            <td data-label="İşlem">
+            <td data-label="İşlem" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                ${symObj.paused
+                ? `<button class="active" onclick="togglePauseSymbol('${sym}', false)">Devam Et</button>`
+                : `<button class="warning" onclick="togglePauseSymbol('${sym}', true)">Durdur</button>`
+            }
                 <button onclick="openEditModal('${sym}', '${category}', ${isCustom})">Düzenle</button>
             </td>
         `;
@@ -113,6 +196,17 @@ async function addSymbol() {
     document.getElementById('newSymbol').value = '';
     await loadConfig();
     alert(`Sembol eklendi! Kategori: ${category}`);
+}
+
+async function togglePauseSymbol(symbol, paused) {
+    if (paused && !confirm(`${symbol} sembolünden veri akışını durdurmak istiyor musunuz?`)) return;
+
+    await apiFetch(`/api/admin/symbol/pause`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, paused })
+    });
+    await loadConfig();
 }
 
 // --- Modal Logic ---
@@ -167,6 +261,7 @@ function openBulkEditModal() {
     document.getElementById('overrideType').value = 'none';
     document.getElementById('fixedPrice').value = '';
     document.getElementById('multiplierValue').value = '1.00';
+    document.getElementById('expiresIn').value = '';
     document.getElementById('deleteSymbolBtn').style.display = 'none';
 
     toggleInputs();
@@ -242,6 +337,7 @@ function toggleInputs() {
     const type = document.getElementById('overrideType').value;
     document.getElementById('fixedInputGroup').style.display = type === 'fixed' ? 'block' : 'none';
     document.getElementById('multiplierInputGroup').style.display = type === 'multiplier' ? 'block' : 'none';
+    document.getElementById('expirationInputGroup').style.display = type !== 'none' ? 'block' : 'none';
 }
 
 async function saveOverride() {
@@ -252,6 +348,11 @@ async function saveOverride() {
         payload.price = document.getElementById('fixedPrice').value;
     } else if (type === 'multiplier') {
         payload.multiplier = document.getElementById('multiplierValue').value;
+    }
+
+    const expiresIn = document.getElementById('expiresIn').value;
+    if (expiresIn && type !== 'none') {
+        payload.expiresIn = expiresIn;
     }
 
     if (isBulkEdit) {

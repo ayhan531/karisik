@@ -72,6 +72,14 @@
             background: #dc2626;
         }
 
+        button.warning {
+            background: #f59e0b;
+        }
+
+        button.warning:hover {
+            background: #d97706;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -103,6 +111,32 @@
         .override {
             background: #d97706;
             color: white;
+        }
+
+        .paused {
+            background: #ef4444;
+            color: white;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: #334155;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3b82f6;
+            margin-top: 10px;
         }
 
         /* Modal */
@@ -204,6 +238,22 @@
             <button class="danger" onclick="logout()">Çıkış Yap</button>
         </div>
 
+        <!-- System Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div>👥 Aktif İstemci</div>
+                <div class="metric-value" id="wsClientsMetric">0</div>
+            </div>
+            <div class="metric-card">
+                <div>🌐 Playwright Durumu</div>
+                <div class="metric-value" id="pwStatusMetric">-</div>
+            </div>
+            <div class="metric-card">
+                <div>⏱️ Son Veri Senkronu</div>
+                <div class="metric-value" id="lastDataMetric" style="font-size: 16px;">-</div>
+            </div>
+        </div>
+
         <!-- Global Settings -->
         <div class="card">
             <h3>Genel Ayarlar</h3>
@@ -220,16 +270,25 @@
                     <input type="text" id="newSymbol" placeholder="Örn: THYAO veya BTCUSDT">
                     <select id="newCategory"
                         style="background:#0f172a; color:white; border:1px solid #334155; border-radius:6px; padding:0 10px;">
-                        <option value="BORSA ISTANBUL">BORSA İSTANBUL</option>
-                        <option value="KRIPTO" selected>KRİPTO</option>
-                        <option value="EMTIA">EMTİA</option>
-                        <option value="ENDEKSLER">ENDEKSLER</option>
-                        <option value="EXCHANGE">DÖVİZ</option>
-                        <option value="STOCKS">HİSSELER (ABD)</option>
-                        <option value="DİĞER">DİĞER</option>
+                        <!-- JS ile dolacak -->
                     </select>
                     <button onclick="addSymbol()">Ekle</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Category Management -->
+        <div class="card">
+            <h3>Kategori Yönetimi</h3>
+            <div class="form-group">
+                <label>Yeni Kategori Ekle:</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="newCategoryName" placeholder="Örn: YABANCI HİSSELER">
+                    <button onclick="addCategory()">Ekle</button>
+                </div>
+            </div>
+            <div id="categoryList" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                <!-- JS ile dolacak -->
             </div>
         </div>
 
@@ -273,13 +332,7 @@
             <div class="form-group" id="categoryInputGroup">
                 <label>Kategori (Mağaza):</label>
                 <select id="editCategory">
-                    <option value="BORSA ISTANBUL">BORSA İSTANBUL</option>
-                    <option value="KRIPTO">KRİPTO</option>
-                    <option value="EMTIA">EMTİA</option>
-                    <option value="ENDEKSLER">ENDEKSLER</option>
-                    <option value="EXCHANGE">DÖVİZ</option>
-                    <option value="STOCKS">HİSSELER (ABD)</option>
-                    <option value="DİĞER">DİĞER</option>
+                    <!-- JS ile dolacak -->
                 </select>
             </div>
 
@@ -299,12 +352,16 @@
                 <label>Çarpan (Örn: 1.05 = %5 Artır):</label>
                 <input type="number" id="multiplierValue" step="0.01" value="1.00">
             </div>
+            <div class="form-group" id="expirationInputGroup" style="display:none;">
+                <label>Süre Sınırı (Dakika) - Boş bırakırsanız süresiz olur:</label>
+                <input type="number" id="expiresIn" placeholder="Örn: 30">
+            </div>
             <button onclick="saveOverride()">Kaydet</button>
             <button class="danger" id="deleteSymbolBtn" style="float: right;">Sembolü Sil</button>
         </div>
     </div>
 
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
 </body>
 
 </html>
