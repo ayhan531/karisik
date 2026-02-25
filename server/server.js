@@ -136,10 +136,43 @@ let globalDelay = 0;
 let priceOverrides = {};
 
 // Admin Hooks
-app.locals.addSymbolToStream = (symbol) => {
-    console.log(`🆕 Yeni Sembol Eklendi: ${symbol}`);
-    if (page && !activeSymbols.includes(symbol)) {
-        activeSymbols.push(symbol);
+app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
+    console.log(`🆕 Yeni Sembol Eklendi: ${symbol} (Kategori: ${category})`);
+
+    // Ham ismi TradingView formatına çevir
+    const ticker = getSymbolForCategory(symbol, category);
+    console.log(`📡 TradingView Ticker: ${ticker}`);
+
+    // Reverse mapping'e ekle
+    reverseMapping[ticker] = symbol;
+
+    // Aktif listeye ekle (zaten yoksa)
+    if (!activeSymbols.includes(ticker)) {
+        activeSymbols.push(ticker);
+    }
+
+    // Eğer mevcut sayfa var ve bağlantı açıksa, yeniden başlatmadan inject et
+    if (page) {
+        page.evaluate((tvTicker) => {
+            if (window.tvSocket && window.tvSocket.readyState === 1) {
+                const constructMessage = (func, paramList) => {
+                    const json = JSON.stringify({ m: func, p: paramList });
+                    return `~m~${json.length}~m~${json}`;
+                };
+                // Mevcut session ID'yi bul
+                const sessionId = window._tvSessionId;
+                if (sessionId) {
+                    window.tvSocket.send(constructMessage('quote_add_symbols', [sessionId, tvTicker]));
+                    console.log('✅ Sembol anlık enjekte edildi:', tvTicker);
+                } else {
+                    console.warn('Session ID bulunamadı, tam yenileme yapılıyor');
+                }
+            }
+        }, ticker).catch(() => {
+            // Sayfa hazır değilse tüm bağlantıyı yenile
+            startTradingViewConnection();
+        });
+    } else {
         startTradingViewConnection();
     }
 };
@@ -326,6 +359,8 @@ async function startTradingViewConnection() {
                     return `~m~${json.length}~m~${json}`;
                 };
                 const sessionId = 'qs_' + Math.random().toString(36).substring(7);
+                // Session ID'yi global olarak sakla (yeni sembol enjeksiyonu için)
+                window._tvSessionId = sessionId;
                 ws.send(constructMessage('quote_create_session', [sessionId]));
                 ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
                 let i = 0;
