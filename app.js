@@ -25,21 +25,28 @@ class TradingApp {
             const res = await fetch('/api/public-symbols');
             const data = await res.json();
             if (data.symbols && data.symbols.length > 0) {
-                // Sadece son parçayı (clean name) alıp "DİĞER" kategorisine ekle
-                const cleanSymbols = data.symbols.map(s => {
-                    const mapped = this.getCleanName(s);
-                    return mapped;
+                // Mevcut symbolsData'nın kopyasını al
+                let updatedSymbols = JSON.parse(JSON.stringify(symbolsData));
+
+                data.symbols.forEach(sObj => {
+                    const cleanName = this.getCleanName(sObj.name);
+                    const category = sObj.category || 'DİĞER';
+
+                    // Kategori yoksa oluştur
+                    if (!updatedSymbols[category]) {
+                        updatedSymbols[category] = [];
+                    }
+
+                    // Eğer sembol o kategoride zaten yoksa ekle
+                    if (!updatedSymbols[category].includes(cleanName)) {
+                        updatedSymbols[category].push(cleanName);
+                    }
                 });
 
-                // Mevcut symbolsData'yı bozmadan "DİĞER" kategorisini ekle/güncelle
-                this.symbols = {
-                    ...symbolsData,
-                    'DİĞER': cleanSymbols
-                };
-
+                this.symbols = updatedSymbols;
                 this.renderFilters();
                 this.renderList();
-                console.log('✅ Özel semboller yüklendi:', cleanSymbols);
+                console.log('✅ Özelleştirilmiş semboller yüklendi.');
             }
         } catch (e) {
             console.error('Custom symbols fetch failed:', e);

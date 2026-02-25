@@ -34,33 +34,40 @@ router.get('/config', (req, res) => {
         allSymbols = req.app.locals.getActiveSymbols();
     }
 
-    // Config'deki özel sembolleri de temizleyip ekle (Eğer aktif değilseler bile listede görünsünler)
-    const cleanConfigSymbols = config.symbols.map(s => {
-        // server.js'deki temizleme mantığı ile aynı olmalı
-        return s.split(':').pop();
+    // Config'deki özel sembolleri mapleyelim (Array of objects formatında dönelim)
+    // s string ise (eski versiyon), name olarak ata. Obj ise zaten name/category vardır.
+    const customSymbols = config.symbols.map(s => {
+        if (typeof s === 'string') return { name: s.split(':').pop(), category: 'DİĞER', original: s };
+        return { name: s.name, category: s.category || 'DİĞER', original: s.name };
     });
-
-    const uniqueSymbols = [...new Set([...cleanConfigSymbols, ...allSymbols])];
 
     res.json({
         ...config,
-        symbols: uniqueSymbols,
-        originalSymbols: config.symbols // Orijinal hallerini silme vs. için saklayalım
+        symbols: customSymbols,
+        allActiveSymbols: allSymbols // Sadece debug için
     });
 });
 
 // 2. Yeni Sembol Ekle
 router.post('/symbol', (req, res) => {
-    const { symbol } = req.body;
+    const { symbol, category } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
 
     const config = getConfig();
-    if (!config.symbols.includes(symbol)) {
-        config.symbols.push(symbol);
+
+    // Var mı kontrol et
+    const exists = config.symbols.some(s => {
+        const sName = typeof s === 'string' ? s : s.name;
+        return sName === symbol;
+    });
+
+    if (!exists) {
+        config.symbols.push({ name: symbol, category: category || 'DİĞER' });
         saveConfig(config);
-        // Server'a sinyal gönder: Yeni sembol eklendi, TradingView'den çekmeye başla
+
+        // Server'a sinyal gönder
         if (req.app.locals.addSymbolToStream) {
-            req.app.locals.addSymbolToStream(symbol);
+            req.app.locals.addSymbolToStream(symbol, category);
         }
     }
     res.json({ success: true, symbols: config.symbols });
@@ -111,19 +118,17 @@ router.delete('/symbol/:symbol', (req, res) => {
     const config = getConfig();
 
     const initialLength = config.symbols.length;
-    // Hem tam eşleşmeyi hem de temizlenmiş halini kontrol et
-    config.symbols = config.symbols.filter(s => s !== symbol && s.split(':').pop() !== symbol);
+    // Nesne yapısına göre filtrele
+    config.symbols = config.symbols.filter(s => {
+        const sName = typeof s === 'string' ? s : s.name;
+        // Hem tam adı hem de temizlenmiş halini kontrol et
+        return sName !== symbol && sName.split(':').pop() !== symbol;
+    });
 
     if (config.symbols.length !== initialLength) {
-        // Eğer override varsa onu da temizle
         delete config.overrides[symbol];
-        // Temizlenmiş hali de override içinde olabilir
-        const cleanSymbol = symbol.split(':').pop();
-        delete config.overrides[cleanSymbol];
-
         saveConfig(config);
 
-        // Server'a sinyal gönder
         if (req.app.locals.removeSymbolFromStream) {
             req.app.locals.removeSymbolFromStream(symbol);
         }

@@ -38,18 +38,15 @@ function renderTable() {
     const tbody = document.getElementById('symbolTableBody');
     tbody.innerHTML = '';
 
-    // Search Filter
     const query = document.getElementById('monitorSearch').value.toLowerCase();
 
-    // Combine known symbols + custom symbols
+    // Config'ten gelenler (Artık name ve category içeren objeler)
     let allSymbols = config.symbols || [];
 
-    // Config'deki override'ları listeye ekle (eğer symbols içinde yoksa bile)
-    Object.keys(config.overrides || {}).forEach(sym => {
-        if (!allSymbols.includes(sym)) allSymbols.push(sym);
-    });
+    allSymbols.forEach(symObj => {
+        const sym = typeof symObj === 'string' ? symObj : symObj.name;
+        const category = typeof symObj === 'string' ? 'DİĞER' : (symObj.category || 'DİĞER');
 
-    allSymbols.forEach(sym => {
         if (!sym.toLowerCase().includes(query)) return;
 
         const override = config.overrides ? config.overrides[sym] : null;
@@ -65,9 +62,10 @@ function renderTable() {
         }
 
         const tr = document.createElement('tr');
-        tr.id = `row-${sym}`; // Add ID for easy access
+        tr.id = `row-${sym}`;
         tr.innerHTML = `
             <td data-label="Sembol">${sym}</td>
+            <td data-label="Kategori" style="color: #3b82f6; font-size: 0.85em;">${category}</td>
             <td data-label="Fiyat" class="price-cell">Bekleniyor...</td>
             <td data-label="Durum">${statusHtml}</td>
             <td data-label="Override">${overrideValue}</td>
@@ -92,19 +90,19 @@ async function updateDelay() {
 }
 
 async function addSymbol() {
-    const symbol = document.getElementById('newSymbol').value.trim();
+    const symbol = document.getElementById('newSymbol').value.trim().toUpperCase();
+    const category = document.getElementById('newCategory').value;
     if (!symbol) return;
 
     await apiFetch(`/api/admin/symbol`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol })
+        body: JSON.stringify({ symbol, category })
     });
 
     document.getElementById('newSymbol').value = '';
-    // Reload config to update list
     await loadConfig();
-    alert('Sembol eklendi! Veri akışı başlıyor...');
+    alert(`Sembol eklendi! Kategori: ${category}`);
 }
 
 // --- Modal Logic ---
@@ -132,11 +130,15 @@ function openEditModal(symbol) {
 
     // Wire up delete button
     const deleteBtn = document.getElementById('deleteSymbolBtn');
-    if (config.symbols && config.symbols.includes(symbol)) {
+
+    // config.symbols içinde objeler var, kontrol et
+    const isCustom = config.symbols.some(s => (typeof s === 'string' ? s : s.name) === symbol);
+
+    if (isCustom) {
         deleteBtn.style.display = 'block';
         deleteBtn.onclick = () => deleteSymbol(symbol);
     } else {
-        deleteBtn.style.display = 'none'; // Can't delete built-in symbols
+        deleteBtn.style.display = 'none';
     }
 
     toggleInputs();

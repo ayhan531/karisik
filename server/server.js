@@ -75,7 +75,12 @@ app.get('/api/public-symbols', (req, res) => {
         const configFile = path.join(__dirname, 'data/config.json');
         if (fs.existsSync(configFile)) {
             const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            return res.json({ symbols: config.symbols || [] });
+            // Normalize symbols to objects for frontend
+            const normalized = (config.symbols || []).map(s => {
+                if (typeof s === 'string') return { name: s, category: 'DİĞER' };
+                return s;
+            });
+            return res.json({ symbols: normalized });
         }
     } catch (e) { console.error('Public symbols error:', e); }
     res.json({ symbols: [] });
@@ -267,8 +272,11 @@ function prepareAllSymbols() {
         if (fs.existsSync(configFile)) {
             const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
             if (config.symbols) {
-                config.symbols.forEach(sym => {
-                    const ticker = getSymbolForCategory(sym, 'CUSTOM');
+                config.symbols.forEach(s => {
+                    const sym = typeof s === 'string' ? s : s.name;
+                    const cat = typeof s === 'string' ? 'CUSTOM' : (s.category || 'CUSTOM');
+
+                    const ticker = getSymbolForCategory(sym, cat);
                     if (!formattedSymbols.includes(ticker)) {
                         formattedSymbols.push(ticker);
                         reverseMapping[ticker] = sym;
@@ -276,7 +284,7 @@ function prepareAllSymbols() {
                 });
             }
         }
-    } catch (e) { }
+    } catch (e) { console.error('Prepare custom symbols error:', e); }
 
     const uniqueSymbols = [...new Set(formattedSymbols)];
     activeSymbols = uniqueSymbols;

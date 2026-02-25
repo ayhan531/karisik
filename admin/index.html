@@ -215,9 +215,19 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>Yeni Sembol Ekle (TradingView Kodu):</label>
+                <label>Yeni Sembol Ekle:</label>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="newSymbol" placeholder="Örn: BIST:GUBRF veya BINANCE:AVAXUSDT">
+                    <input type="text" id="newSymbol" placeholder="Örn: THYAO veya BTCUSDT">
+                    <select id="newCategory"
+                        style="background:#0f172a; color:white; border:1px solid #334155; border-radius:6px; padding:0 10px;">
+                        <option value="BORSA ISTANBUL">BORSA İSTANBUL</option>
+                        <option value="KRIPTO" selected>KRİPTO</option>
+                        <option value="EMTIA">EMTİA</option>
+                        <option value="ENDEKSLER">ENDEKSLER</option>
+                        <option value="EXCHANGE">DÖVİZ</option>
+                        <option value="STOCKS">HİSSELER (ABD)</option>
+                        <option value="DİĞER">DİĞER</option>
+                    </select>
                     <button onclick="addSymbol()">Ekle</button>
                 </div>
             </div>
@@ -232,6 +242,7 @@
                 <thead>
                     <tr>
                         <th>Sembol</th>
+                        <th>Kategori</th>
                         <th>Fiyat</th>
                         <th>Durum</th>
                         <th>Override</th>
