@@ -197,7 +197,8 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
     console.log(`📡 TradingView Ticker: ${ticker}`);
 
     // Reverse mapping'e ekle
-    reverseMapping[ticker] = symbol;
+    if (!reverseMapping[ticker]) reverseMapping[ticker] = [];
+    if (!reverseMapping[ticker].includes(symbol)) reverseMapping[ticker].push(symbol);
 
     // Aktif listeye ekle (zaten yoksa)
     if (!activeSymbols.includes(ticker)) {
@@ -270,7 +271,7 @@ app.locals.getActiveSymbols = () => {
     // Return all symbols being monitored (simplified list)
     return activeSymbols.map(s => {
         // Reverse map if possible for clean names
-        const clean = reverseMapping[s] || s.split(':').pop();
+        const clean = (reverseMapping[s] && reverseMapping[s].length > 0) ? reverseMapping[s][0] : s.split(':').pop();
         return clean;
     });
 };
@@ -415,12 +416,17 @@ async function prepareAllSymbols() {
     const formattedSymbols = ['FX_IDC:USDTRY'];
     Object.keys(reverseMapping).forEach(key => delete reverseMapping[key]);
 
-    reverseMapping['FX_IDC:USDTRY'] = 'USDTRY';
+    const addMapping = (ticker, sym) => {
+        if (!reverseMapping[ticker]) reverseMapping[ticker] = [];
+        if (!reverseMapping[ticker].includes(sym)) reverseMapping[ticker].push(sym);
+    };
+
+    addMapping('FX_IDC:USDTRY', 'USDTRY');
 
     // 1. Sabit Mapped Sembolleri Ekle
     Object.entries(symbolMapping).forEach(([key, value]) => {
         formattedSymbols.push(value);
-        reverseMapping[value] = key;
+        addMapping(value, key);
     });
 
     // 2. symbols.js'deki her şeyi kategorisine göre ekle
@@ -429,8 +435,8 @@ async function prepareAllSymbols() {
             const ticker = getSymbolForCategory(sym, category);
             if (!formattedSymbols.includes(ticker)) {
                 formattedSymbols.push(ticker);
-                reverseMapping[ticker] = sym;
             }
+            addMapping(ticker, sym);
         });
     });
 
@@ -445,8 +451,8 @@ async function prepareAllSymbols() {
                 const ticker = getSymbolForCategory(sym, cat);
                 if (!formattedSymbols.includes(ticker)) {
                     formattedSymbols.push(ticker);
-                    reverseMapping[ticker] = sym;
                 }
+                addMapping(ticker, sym);
             });
         }
     } catch (e) { console.error('Prepare custom symbols error:', e); }
@@ -532,7 +538,10 @@ setInterval(() => {
 }, 60000);
 
 const reverseMapping = {};
-Object.entries(symbolMapping).forEach(([key, value]) => { reverseMapping[value] = key; });
+Object.entries(symbolMapping).forEach(([key, value]) => {
+    if (!reverseMapping[value]) reverseMapping[value] = [];
+    reverseMapping[value].push(key);
+});
 
 function processRawData(rawData) {
     lastDataTime = Date.now();
@@ -564,59 +573,64 @@ function _processDataInternal(rawData) {
                 if (!symbolRaw || !values) continue;
 
                 let tvTicker = symbolRaw.split(',')[0].trim();
-                let symbol = reverseMapping[tvTicker] || tvTicker.split(':').pop();
-
-                if (symbol === 'TKFEN') symbol = 'TEKFEN';
-                if (symbol === 'ARCLK') symbol = 'BEKO';
-                if (symbol === 'XAUTRYG' && !reverseMapping[tvTicker]) symbol = 'GLDGR';
-                if (symbol === '399001') symbol = 'SZSE';
-
-                if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
-                    usdTryRate = values.lp;
-                    symbol = 'USDTRY';
+                let mappedSymbols = reverseMapping[tvTicker];
+                if (!mappedSymbols || mappedSymbols.length === 0) {
+                    mappedSymbols = [tvTicker.split(':').pop()];
                 }
 
-                let finalPrice = values.lp;
-                let currency = values.currency_code || (tvTicker.includes('TRY') ? 'TRY' : 'USD');
+                mappedSymbols.forEach(symbol => {
+                    if (symbol === 'TKFEN') symbol = 'TEKFEN';
+                    if (symbol === 'ARCLK') symbol = 'BEKO';
+                    if (symbol === 'XAUTRYG' && (!reverseMapping[tvTicker] || !reverseMapping[tvTicker].includes('XAUTRYG'))) symbol = 'GLDGR';
+                    if (symbol === '399001') symbol = 'SZSE';
 
-                // 🛑 PAUSED KONTROLÜ
-                if (pausedSymbols.has(symbol)) continue;
+                    let finalPrice = values.lp;
+                    if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
+                        usdTryRate = values.lp;
+                        symbol = 'USDTRY';
+                    }
 
-                // 🛑 OVERRIDE KONTROLÜ
-                if (priceOverrides[symbol]) {
-                    const override = priceOverrides[symbol];
-                    if (override.expiresAt && Date.now() > new Date(override.expiresAt).getTime()) {
-                        // Süresi dolmuş, yoksay
-                    } else {
-                        if (override.type === 'fixed') {
-                            finalPrice = override.value;
-                        } else if (override.type === 'multiplier') {
-                            if (finalPrice) {
-                                finalPrice = finalPrice * override.value;
+                    let currency = values.currency_code || (tvTicker.includes('TRY') ? 'TRY' : 'USD');
+
+                    // 🛑 PAUSED KONTROLÜ
+                    if (pausedSymbols.has(symbol)) return;
+
+                    // 🛑 OVERRIDE KONTROLÜ
+                    if (priceOverrides[symbol]) {
+                        const override = priceOverrides[symbol];
+                        if (override.expiresAt && Date.now() > new Date(override.expiresAt).getTime()) {
+                            // Süresi dolmuş, yoksay
+                        } else {
+                            if (override.type === 'fixed') {
+                                finalPrice = override.value;
+                            } else if (override.type === 'multiplier') {
+                                if (finalPrice) {
+                                    finalPrice = finalPrice * override.value;
+                                }
                             }
                         }
                     }
-                }
 
-                if (!latestPrices[symbol]) latestPrices[symbol] = {};
-                if (finalPrice) latestPrices[symbol].price = finalPrice;
-                if (values.chp) latestPrices[symbol].changePercent = values.chp;
-                latestPrices[symbol].currency = currency;
+                    if (!latestPrices[symbol]) latestPrices[symbol] = {};
+                    if (finalPrice) latestPrices[symbol].price = finalPrice;
+                    if (values.chp) latestPrices[symbol].changePercent = values.chp;
+                    latestPrices[symbol].currency = currency;
 
-                if (latestPrices[symbol].price) {
-                    const broadcastMsg = JSON.stringify({
-                        type: 'price_update',
-                        data: {
-                            symbol: symbol,
-                            price: latestPrices[symbol].price,
-                            changePercent: latestPrices[symbol].changePercent,
-                            currency: latestPrices[symbol].currency
+                    if (latestPrices[symbol].price) {
+                        const broadcastMsg = JSON.stringify({
+                            type: 'price_update',
+                            data: {
+                                symbol: symbol,
+                                price: latestPrices[symbol].price,
+                                changePercent: latestPrices[symbol].changePercent,
+                                currency: latestPrices[symbol].currency
+                            }
+                        });
+                        if (app.locals.wss) {
+                            app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                         }
-                    });
-                    if (app.locals.wss) {
-                        app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                     }
-                }
+                });
             }
         } catch (e) { }
     }

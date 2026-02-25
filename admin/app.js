@@ -62,11 +62,16 @@ function renderCategories() {
 
     categories.forEach(cat => {
         // Dropdown additions
-        const opt = document.createElement('option');
-        opt.value = cat;
-        opt.innerHTML = cat;
-        newCatSelect.appendChild(opt.cloneNode(true));
-        editCatSelect.appendChild(opt);
+        const optNew = document.createElement('option');
+        optNew.value = cat;
+        optNew.innerHTML = cat;
+        if (cat === 'KRIPTO') optNew.selected = true;
+        newCatSelect.appendChild(optNew);
+
+        const optEdit = document.createElement('option');
+        optEdit.value = cat;
+        optEdit.innerHTML = cat;
+        editCatSelect.appendChild(optEdit);
 
         // UI Tag List addition
         const div = document.createElement('div');
