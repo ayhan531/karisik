@@ -158,7 +158,22 @@ const symbolMapping = {
     'X30YVADE': 'BIST:XU0301!',
     'TEKFEN': 'BIST:TKFEN',
     'KOZAA': 'BIST:KOZAA',
-    'BEKO': 'BIST:ARCLK'
+    'BEKO': 'BIST:ARCLK',
+    'NDX': 'TVC:NDX',
+    'SPX': 'TVC:SPX',
+    'DJI': 'TVC:DJI',
+    'DAX': 'TVC:DAX',
+    'UKX': 'TVC:UKX',
+    'CAC40': 'TVC:CAC40',
+    'NI225': 'TVC:NI225',
+    'HSI': 'TVC:HSI',
+    'COPPER': 'COMEX:HG1!',
+    'CORN': 'CBOT:ZC1!',
+    'WHEAT': 'CBOT:ZW1!',
+    'SUGAR': 'ICEUS:SB1!',
+    'COFFEE': 'ICEUS:KC1!',
+    'COTTON': 'ICEUS:CT1!',
+    'NG1!': 'NYMEX:NG1!'
 };
 
 const nyseStocks = [
@@ -174,21 +189,27 @@ function getSymbolForCategory(symbol, category) {
     const sym = symbol.toUpperCase();
 
     // 1. Kategoriye göre öncelik
-    if (category === 'BORSA ISTANBUL' || category === 'ENDEKSLER') return `BIST:${sym}`;
+    if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
+
+    // Endeksler için: Eğer X ile başlıyorsa BIST, değilse TVC deniyoruz (NDX vbMapping üstte zaten var)
+    if (category === 'ENDEKSLER') {
+        if (sym.startsWith('X')) return `BIST:${sym}`;
+        return `TVC:${sym}`;
+    }
+
     if (category === 'KRIPTO') return `BINANCE:${sym}`;
     if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
     if (category === 'STOCKS') return nyseStocks.includes(sym) ? `NYSE:${sym}` : `NASDAQ:${sym}`;
 
     // 2. Sembol yapısına göre tahmin (CUSTOM eklemeler için)
     if (sym.endsWith('TRY')) {
-        // Eğer USD, EUR gibi bir döviz ise FX_IDC, değilse (BTC vb) BINANCE
         const currencies = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'];
         const base = sym.replace('TRY', '');
         return currencies.includes(base) ? `FX_IDC:${sym}` : `BINANCE:${sym}`;
     }
 
     // Altın/Gümüş gibi emtialar için TVC veya FX_IDC
-    if (['GOLD', 'SILVER', 'PLATINUM', 'PALLADIUM'].includes(sym)) return `TVC:${sym}`;
+    if (['GOLD', 'SILVER', 'PLATINUM', 'PALLADIUM', 'USOIL'].includes(sym)) return `TVC:${sym}`;
 
     // Eğer 5 karakterden kısaysa ve sadece harfse büyük ihtimalle BIST hissesidir
     if (sym.length >= 3 && sym.length <= 6 && /^[A-Z0-9]+$/.test(sym)) {
