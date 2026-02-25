@@ -255,28 +255,87 @@ const nyseStocks = [
     'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM'
 ];
 
+// Popüler kripto coinlerin temel listesi (borsa algısı için)
+const knownCryptos = new Set([
+    'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE', 'SHIB', 'DOT', 'LINK', 'TRX', 'POL', 'LTC',
+    'BCH', 'UNI', 'XLM', 'ATOM', 'ETC', 'FIL', 'HBAR', 'APT', 'ARB', 'OP', 'INJ', 'RENDER', 'GRT', 'STX',
+    'NEAR', 'ALGO', 'AAVE', 'SAND', 'GALA', 'MANA', 'EGLD', 'THETA', 'AXS', 'XTZ', 'MINA', 'CHZ', 'NEO',
+    'JASMY', 'PEPE', 'FLOKI', 'BONK', 'WIF', '1000SATS', 'FET', 'CFX', 'SUI', 'SEI', 'TIA', 'ORDI',
+    'BLUR', 'MEME', 'WLD', 'API3', 'MAGIC', 'GMX', 'LIDO', 'RPL', 'SNX', 'CRV', 'BAL', 'YFI', 'COMP',
+    'MKR', 'SUSHI', '1INCH', 'CAKE', 'RAY', 'SRM', 'MATIC', 'FTM', 'ONE', 'ZIL', 'ICX', 'IOTA', 'EOS',
+    'NANO', 'ZEC', 'DASH', 'XMR', 'DCR', 'DGB', 'RVN', 'KMD', 'VTC', 'BTG', 'WAVES', 'LSK', 'STEEM', 'ARDR'
+]);
+
+// Bilinen ABD borsası hisseleri
+const nasdaqStocks = new Set([
+    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'AMD', 'INTC', 'CSCO', 'ADBE', 'PYPL',
+    'CRM', 'ORCL', 'QCOM', 'TXN', 'AVGO', 'MU', 'AMAT', 'LRCX', 'KLAC', 'MRVL', 'NXPI', 'SWKS', 'ZBRA',
+    'TEAM', 'DOCU', 'ZS', 'CRWD', 'OKTA', 'NET', 'DDOG', 'MDB', 'SNOW', 'PLTR', 'COIN', 'HOOD', 'RBLX'
+]);
+const nyseStocksSet = new Set([
+    'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'PEP', 'MCD', 'SBUX', 'NKE',
+    'WMT', 'TGT', 'COST', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX', 'COP', 'SLB',
+    'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'TMUS', 'VZ', 'T', 'BRK.B', 'JPM', 'HD', 'LOW', 'TJX', 'BABA'
+]);
+
 function getSymbolForCategory(symbol, category) {
-    if (symbolMapping[symbol]) return symbolMapping[symbol];
+    if (!symbol) return null;
 
-    const sym = symbol.toUpperCase();
-
-    // Kategoriye göre borsa ata
-    if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
-
-    if (category === 'KRIPTO') {
-        // Direkt BINANCE:BTCBRY gibi TRY çiftlerini kullan
-        return `BINANCE:${sym.replace('TRY', '')}TRY`;
+    // Eğer sembol zaten exchange prefix içeriyorsa direkt döndür (örn: BINANCE:BTCUSDT)
+    if (symbol.includes(':')) {
+        return symbol.toUpperCase();
     }
 
-    if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
-    if (category === 'STOCKS') return nyseStocks.includes(sym) ? `NYSE:${sym}` : `NASDAQ:${sym}`;
+    const sym = symbol.toUpperCase().trim();
 
-    // Default Tahmin
-    if (sym.length >= 3 && sym.length <= 5 && /^[A-Z]+$/.test(sym)) {
+    // 1. Sabit mapping'de var mı?
+    if (symbolMapping[sym]) return symbolMapping[sym];
+
+    // 2. Kategoriye göre spesifik işlem
+    if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
+    if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
+
+    if (category === 'KRIPTO') {
+        if (sym.endsWith('USDT')) return `BINANCE:${sym}`;
+        if (sym.endsWith('TRY')) return `BINANCE:${sym}`;
+        if (sym.endsWith('USD')) return `BINANCE:${sym.slice(0, -3)}USDT`;
+        if (sym.endsWith('BTC')) return `BINANCE:${sym}`;
+        return `BINANCE:${sym}USDT`; // Sadece coin ismi yazılmışsa USDT çifti dene
+    }
+
+    if (category === 'STOCKS') {
+        if (nyseStocksSet.has(sym)) return `NYSE:${sym}`;
+        return `NASDAQ:${sym}`;
+    }
+
+    // 3. Kategori yoksa (CUSTOM / DİĞER) akıllı algılama:
+
+    // a) Dolar/TL çiftine benziyor mu? (örn: BTCUSD, ETHUSD, BTCUSDT, BTCTRY, ETHTRY)
+    const cryptoSuffixes = ['USDT', 'USDC', 'USD', 'TRY', 'BTC', 'ETH', 'BNB', 'BUSD'];
+    for (const suffix of cryptoSuffixes) {
+        if (sym.endsWith(suffix)) {
+            const base = sym.slice(0, -suffix.length);
+            if (knownCryptos.has(base) || base.length <= 6) {
+                if (suffix === 'USD') return `BINANCE:${base}USDT`;
+                return `BINANCE:${sym}`;
+            }
+        }
+    }
+
+    // b) ABD hissesi mi?
+    if (nasdaqStocks.has(sym)) return `NASDAQ:${sym}`;
+    if (nyseStocksSet.has(sym)) return `NYSE:${sym}`;
+
+    // c) Kripto coin ismi mi? (USDT çifti dene)
+    if (knownCryptos.has(sym)) return `BINANCE:${sym}USDT`;
+
+    // d) Kısa harf kodu - BIST hissesi olabilir
+    if (sym.length >= 3 && sym.length <= 6 && /^[A-Z]+$/.test(sym)) {
         return `BIST:${sym}`;
     }
 
-    return sym;
+    // e) TVC ile dene (Genel endeksler, emtialar)
+    return `TVC:${sym}`;
 }
 
 function prepareAllSymbols() {
