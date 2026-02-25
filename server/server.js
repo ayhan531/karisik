@@ -77,6 +77,17 @@ app.get('/api/prices', (req, res) => {
     res.json(latestPrices);
 });
 
+app.get('/api/public-symbols', (req, res) => {
+    try {
+        const configFile = path.join(__dirname, 'data/config.json');
+        if (fs.existsSync(configFile)) {
+            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+            return res.json({ symbols: config.symbols || [] });
+        }
+    } catch (e) { }
+    res.json({ symbols: [] });
+});
+
 const server = app.listen(PORT, () => {
     console.log(`🚀 Server ${PORT} portunda yayında`);
     setTimeout(startTradingViewConnection, 2000);
@@ -113,6 +124,12 @@ app.locals.addSymbolToStream = (symbol) => {
     }
 };
 
+app.locals.removeSymbolFromStream = (symbol) => {
+    console.log(`🗑️ Sembol Silindi: ${symbol}`);
+    activeSymbols = activeSymbols.filter(s => s !== symbol && s !== getSymbolForCategory(symbol, 'CUSTOM'));
+    startTradingViewConnection();
+};
+
 app.locals.updateOverrides = (overrides) => {
     console.log('✏️ Fiyat Override Güncellendi');
     priceOverrides = overrides;
@@ -133,7 +150,12 @@ app.locals.getActiveSymbols = () => {
 };
 
 const symbolMapping = {
+    'XU100': 'BIST:XU100',
+    'XU030': 'BIST:XU030',
+    'XBANK': 'BIST:XBANK',
     'XSINA': 'BIST:XUSIN',
+    'XUTUM': 'BIST:XUTUM',
+    'X30YVADE': 'BIST:XU0301!',
     'CAC40': 'TVC:CAC40',
     'NI225': 'TVC:NI225',
     'DJI': 'TVC:DJI',

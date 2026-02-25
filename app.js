@@ -17,6 +17,23 @@ class TradingApp {
         this.renderList();
         this.setupEventListeners();
         this.connectToProxy();
+        this.fetchCustomSymbols();
+    }
+
+    async fetchCustomSymbols() {
+        try {
+            const res = await fetch('/api/public-symbols');
+            const data = await res.json();
+            if (data.symbols && data.symbols.length > 0) {
+                // Normalize and add to "DİĞER" category
+                const cleanSymbols = data.symbols.map(s => s.split(':').pop());
+                this.symbols['DİĞER'] = cleanSymbols;
+                this.renderFilters();
+                this.renderList();
+            }
+        } catch (e) {
+            console.error('Custom symbols fetch failed:', e);
+        }
     }
 
     // TradingView Proxy'e WebSocket bağlantısı

@@ -27,19 +27,26 @@ const saveConfig = (config) => {
 // 1. Mevcut Ayarları ve Aktif Sembolleri Getir
 router.get('/config', (req, res) => {
     const config = getConfig();
-    // Server'dan aktif sembol listesini al (memory'deki)
-    if (req.app.locals.getActiveSymbols) {
-        const activeSymbols = req.app.locals.getActiveSymbols();
-        // Config'deki sembollerle birleştir (Eşsiz liste)
-        const allSymbols = [...new Set([...config.symbols, ...activeSymbols])];
 
-        // Response yapısını güncelle: symbols artık tümünü içerir
-        return res.json({
-            ...config,
-            symbols: allSymbols
-        });
+    // Server'dan aktif sembol listesini al (memory'deki)
+    let allSymbols = [];
+    if (req.app.locals.getActiveSymbols) {
+        allSymbols = req.app.locals.getActiveSymbols();
     }
-    res.json(config);
+
+    // Config'deki özel sembolleri de temizleyip ekle (Eğer aktif değilseler bile listede görünsünler)
+    const cleanConfigSymbols = config.symbols.map(s => {
+        // server.js'deki temizleme mantığı ile aynı olmalı
+        return s.split(':').pop();
+    });
+
+    const uniqueSymbols = [...new Set([...cleanConfigSymbols, ...allSymbols])];
+
+    res.json({
+        ...config,
+        symbols: uniqueSymbols,
+        originalSymbols: config.symbols // Orijinal hallerini silme vs. için saklayalım
+    });
 });
 
 // 2. Yeni Sembol Ekle
@@ -96,6 +103,33 @@ router.post('/delay', (req, res) => {
         req.app.locals.updateDelay(config.delay);
     }
     res.json({ success: true, delay: config.delay });
+});
+
+// 5. Sembol Sil
+router.delete('/symbol/:symbol', (req, res) => {
+    const { symbol } = req.params;
+    const config = getConfig();
+
+    const initialLength = config.symbols.length;
+    // Hem tam eşleşmeyi hem de temizlenmiş halini kontrol et
+    config.symbols = config.symbols.filter(s => s !== symbol && s.split(':').pop() !== symbol);
+
+    if (config.symbols.length !== initialLength) {
+        // Eğer override varsa onu da temizle
+        delete config.overrides[symbol];
+        // Temizlenmiş hali de override içinde olabilir
+        const cleanSymbol = symbol.split(':').pop();
+        delete config.overrides[cleanSymbol];
+
+        saveConfig(config);
+
+        // Server'a sinyal gönder
+        if (req.app.locals.removeSymbolFromStream) {
+            req.app.locals.removeSymbolFromStream(symbol);
+        }
+    }
+
+    res.json({ success: true, symbols: config.symbols });
 });
 
 export default router;

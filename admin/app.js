@@ -129,7 +129,29 @@ function openEditModal(symbol) {
         document.getElementById('fixedPrice').value = '';
         document.getElementById('multiplierValue').value = '1.00';
     }
+
+    // Wire up delete button
+    const deleteBtn = document.getElementById('deleteSymbolBtn');
+    if (config.symbols && config.symbols.includes(symbol)) {
+        deleteBtn.style.display = 'block';
+        deleteBtn.onclick = () => deleteSymbol(symbol);
+    } else {
+        deleteBtn.style.display = 'none'; // Can't delete built-in symbols
+    }
+
     toggleInputs();
+}
+
+async function deleteSymbol(symbol) {
+    if (!confirm(`${symbol} sembolünü silmek istediğinize emin misiniz?`)) return;
+
+    await apiFetch(`/api/admin/symbol/${symbol}`, {
+        method: 'DELETE'
+    });
+
+    closeModal();
+    await loadConfig();
+    alert('Sembol silindi!');
 }
 
 function closeModal() {
