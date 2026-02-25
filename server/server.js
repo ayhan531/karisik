@@ -150,21 +150,21 @@ app.locals.getActiveSymbols = () => {
 };
 
 const symbolMapping = {
-    // ENDEKSLER (KUSURSUZ EŞLEŞME)
+    // ENDEKSLER (TVC her zaman veri verir)
     'XU100': 'BIST:XU100',
     'XU030': 'BIST:XU030',
     'XBANK': 'BIST:XBANK',
     'XSINA': 'BIST:XUSIN',
     'XUTUM': 'BIST:XUTUM',
     'X30YVADE': 'BIST:XU0301!',
-    'NDX': 'NASDAQ:NDX',
-    'SPX': 'SP:SPX',
-    'DJI': 'DJ:DJI',
-    'DAX': 'XETR:DAX',
-    'UKX': 'INDEX:UKX',
-    'CAC40': 'EURONEXT:PX1',
-    'NI225': 'INDEX:NKY',
-    'HSI': 'INDEX:HSI',
+    'NDX': 'TVC:NDX',
+    'SPX': 'TVC:SPX',
+    'DJI': 'TVC:DJI',
+    'DAX': 'TVC:DAX',
+    'UKX': 'TVC:UKX',
+    'CAC40': 'TVC:CAC40',
+    'NI225': 'TVC:NI225',
+    'HSI': 'TVC:HSI',
     'SZSE': 'SZSE:399001',
 
     // EMTIA
@@ -206,11 +206,17 @@ function getSymbolForCategory(symbol, category) {
 
     // Kategoriye göre borsa ata
     if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
-    if (category === 'KRIPTO') return `BINANCE:${sym}USDT`; // TRY bazlı değil USDT bazlı çekip çevirelim
+
+    if (category === 'KRIPTO') {
+        // ETHTRY -> ETHUSDT dönüşümü
+        const base = sym.endsWith('TRY') ? sym.slice(0, -3) : sym;
+        return `BINANCE:${base}USDT`;
+    }
+
     if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
     if (category === 'STOCKS') return nyseStocks.includes(sym) ? `NYSE:${sym}` : `NASDAQ:${sym}`;
 
-    // Fallback Tahminleme
+    // Default Tahmin
     if (sym.length >= 3 && sym.length <= 5 && /^[A-Z]+$/.test(sym)) {
         return `BIST:${sym}`;
     }
@@ -220,14 +226,24 @@ function getSymbolForCategory(symbol, category) {
 
 function prepareAllSymbols() {
     const formattedSymbols = ['FX_IDC:USDTRY'];
+    Object.keys(reverseMapping).forEach(key => delete reverseMapping[key]);
 
-    // 1. Sabit Mapped Sembolleri Ekle (Önemli olanlar)
-    Object.values(symbolMapping).forEach(s => formattedSymbols.push(s));
+    reverseMapping['FX_IDC:USDTRY'] = 'USDTRY';
+
+    // 1. Sabit Mapped Sembolleri Ekle
+    Object.entries(symbolMapping).forEach(([key, value]) => {
+        formattedSymbols.push(value);
+        reverseMapping[value] = key;
+    });
 
     // 2. symbols.js'deki her şeyi kategorisine göre ekle
     Object.entries(symbolsData).forEach(([category, symbols]) => {
         symbols.forEach(sym => {
-            formattedSymbols.push(getSymbolForCategory(sym, category));
+            const ticker = getSymbolForCategory(sym, category);
+            if (!formattedSymbols.includes(ticker)) {
+                formattedSymbols.push(ticker);
+                reverseMapping[ticker] = sym;
+            }
         });
     });
 
@@ -237,29 +253,19 @@ function prepareAllSymbols() {
         if (fs.existsSync(configFile)) {
             const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
             if (config.symbols) {
-                config.symbols.forEach(sym => formattedSymbols.push(getSymbolForCategory(sym, 'CUSTOM')));
+                config.symbols.forEach(sym => {
+                    const ticker = getSymbolForCategory(sym, 'CUSTOM');
+                    if (!formattedSymbols.includes(ticker)) {
+                        formattedSymbols.push(ticker);
+                        reverseMapping[ticker] = sym;
+                    }
+                });
             }
         }
     } catch (e) { }
 
     const uniqueSymbols = [...new Set(formattedSymbols)];
     activeSymbols = uniqueSymbols;
-
-    // Reverse mapping'i kur (Veri geldiğinde kim olduğunu anlamak için)
-    Object.keys(reverseMapping).forEach(key => delete reverseMapping[key]);
-
-    // Manual mapping öncelikli
-    for (const [key, value] of Object.entries(symbolMapping)) {
-        reverseMapping[value] = key;
-    }
-
-    uniqueSymbols.forEach(fullTicker => {
-        if (!reverseMapping[fullTicker]) {
-            const cleanName = fullTicker.split(':').pop().replace('USDT', '');
-            reverseMapping[fullTicker] = cleanName;
-        }
-    });
-
     return uniqueSymbols;
 }
 
