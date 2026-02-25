@@ -43,31 +43,43 @@ const authLimiter = rateLimit({
 
 // Authentication Middleware
 const isAuthenticated = (req, res, next) => {
+    // Session kontrolü
     if (req.session.authenticated) {
         return next();
     }
-    if (req.path.startsWith('/api/')) {
+
+    // Eğer zaten login sayfasındaysa veya API'ler üzerinden check/login/logout yapıyorsa izin ver
+    const publicPaths = ['/login.html', '/auth/login', '/auth/check', '/auth/logout'];
+    if (publicPaths.includes(req.path)) {
+        return next();
+    }
+
+    // API istekleri için 401 dön, düz sayfalar için redirect et
+    if (req.originalUrl.startsWith('/api/')) {
+        // Ama public API'leri dışarıda tut
+        const publicApis = ['/api/public-symbols', '/api/prices'];
+        if (publicApis.some(p => req.originalUrl.startsWith(p))) {
+            return next();
+        }
         return res.status(401).json({ success: false, message: 'Yetkisiz erişim.' });
     }
+
     res.redirect('/admin/login.html');
 };
 
-// Auth Routes
-app.use('/api/auth', authLimiter, authRoutes);
+// --- ROUTES ---
 
-// Static files (Login page should be public)
-app.get('/admin/login.html', (req, res) => {
-    res.sendFile(path.join(__dirname, '../admin/login.html'));
+// 1. PUBLIC API'ler (Middleware'den önce gelsin ki takılmasın)
+app.get('/api/public-symbols', (req, res) => {
+    try {
+        const configFile = path.join(__dirname, 'data/config.json');
+        if (fs.existsSync(configFile)) {
+            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+            return res.json({ symbols: config.symbols || [] });
+        }
+    } catch (e) { console.error('Public symbols error:', e); }
+    res.json({ symbols: [] });
 });
-
-// Protected Admin Routes
-// Explicitly protect the admin directory
-app.use('/admin', isAuthenticated, express.static(path.join(__dirname, '../admin')));
-app.use('/api/admin', isAuthenticated, adminRoutes);
-
-// Public root
-// Be careful not to expose sensitive files from root
-app.use(express.static(path.join(__dirname, '../'), { index: 'index.html' }));
 
 app.get('/api/prices', (req, res) => {
     const clientKey = req.headers['x-api-key'];
@@ -77,16 +89,19 @@ app.get('/api/prices', (req, res) => {
     res.json(latestPrices);
 });
 
-app.get('/api/public-symbols', (req, res) => {
-    try {
-        const configFile = path.join(__dirname, 'data/config.json');
-        if (fs.existsSync(configFile)) {
-            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            return res.json({ symbols: config.symbols || [] });
-        }
-    } catch (e) { }
-    res.json({ symbols: [] });
+// 2. AUTH API'leri (Giriş için şart)
+app.use('/api/auth', authRoutes);
+
+// 3. ADMIN / PROTECTED
+app.get('/admin/login.html', (req, res) => {
+    res.sendFile(path.join(__dirname, '../admin/login.html'));
 });
+
+app.use('/admin', isAuthenticated, express.static(path.join(__dirname, '../admin')));
+app.use('/api/admin', isAuthenticated, adminRoutes);
+
+// 4. GENERAL STATIC
+app.use(express.static(path.join(__dirname, '../'), { index: 'index.html' }));
 
 const server = app.listen(PORT, () => {
     console.log(`🚀 Server ${PORT} portunda yayında`);
@@ -167,12 +182,12 @@ const symbolMapping = {
     'HSI': 'TVC:HSI',
     'SZSE': 'SZSE:399001',
 
-    // EMTIA
+    // EMTIA (TL BAZLI OLANLARI SEÇİYORUZ)
     'BRENT': 'TVC:UKOIL',
     'USOIL': 'TVC:USOIL',
     'NG1!': 'NYMEX:NG1!',
-    'GOLD': 'TVC:GOLD',
-    'SILVER': 'TVC:SILVER',
+    'GOLD': 'FX_IDC:XAUTRY',
+    'SILVER': 'FX_IDC:XAGTRY',
     'COPPER': 'COMEX:HG1!',
     'PLATINUM': 'NYMEX:PL1!',
     'PALLADIUM': 'NYMEX:PA1!',
@@ -208,9 +223,8 @@ function getSymbolForCategory(symbol, category) {
     if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
 
     if (category === 'KRIPTO') {
-        // ETHTRY -> ETHUSDT dönüşümü
-        const base = sym.endsWith('TRY') ? sym.slice(0, -3) : sym;
-        return `BINANCE:${base}USDT`;
+        // Direkt BINANCE:BTCBRY gibi TRY çiftlerini kullan
+        return `BINANCE:${sym.replace('TRY', '')}TRY`;
     }
 
     if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
@@ -389,20 +403,9 @@ function _processDataInternal(rawData) {
 
                 let finalPrice = values.lp;
 
-                if (finalPrice && symbol !== 'USDTRY') {
-                    if (tvTicker.includes('USDT') && symbol.endsWith('TRY')) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
-                    else if (tvTicker.startsWith('NYSE:') || tvTicker.startsWith('NASDAQ:')) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
-                    else if (['BRENT', 'USOIL', 'GOLD', 'SILVER', 'CORN', 'WHEAT', 'COPPER', 'PLATINUM', 'PALLADIUM', 'SOYBEAN', 'SUGAR', 'COFFEE', 'COTTON', 'XAUUSD', 'XAGUSD'].includes(symbol)) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
-                    else if (['NDX', 'SPX', 'DJI', 'DAX', 'UKX', 'CAC40', 'NI225', 'SZSE', 'HSI'].includes(symbol)) {
-                        finalPrice = finalPrice * usdTryRate;
-                    }
-                }
+                // 🛑 DIREKT FIYAT - MANUEL HESAPLAMA KALDIRILDI
+                // Kullanıcı isteği üzerine kur ile çarpma işlemini iptal ettik.
+                // TradingView'den gelen ham fiyatı basıyoruz (TRY çiftlerini seçtiğimiz için zaten TL gelecek).
 
                 // 🛑 OVERRIDE KONTROLÜ
                 if (priceOverrides[symbol]) {
