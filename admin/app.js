@@ -40,12 +40,13 @@ function renderTable() {
 
     const query = document.getElementById('monitorSearch').value.toLowerCase();
 
-    // Config'ten gelenler (Artık name ve category içeren objeler)
+    // Config'ten gelenler: artık hem sistem hem custom semboller, hepsi {name, category, isCustom}
     let allSymbols = config.symbols || [];
 
     allSymbols.forEach(symObj => {
         const sym = typeof symObj === 'string' ? symObj : symObj.name;
         const category = typeof symObj === 'string' ? 'DİĞER' : (symObj.category || 'DİĞER');
+        const isCustom = typeof symObj === 'string' ? true : (symObj.isCustom !== false);
 
         if (!sym.toLowerCase().includes(query)) return;
 
@@ -61,16 +62,19 @@ function renderTable() {
             else overrideValue = `Çarpan: ${override.value}x`;
         }
 
+        // Renk: custom = mavi, sistem = yeşil
+        const catColor = isCustom ? '#3b82f6' : '#10b981';
+
         const tr = document.createElement('tr');
         tr.id = `row-${sym}`;
         tr.innerHTML = `
             <td data-label="Sembol">${sym}</td>
-            <td data-label="Kategori" style="color: #3b82f6; font-size: 0.85em;">${category}</td>
+            <td data-label="Kategori" style="color: ${catColor}; font-size: 0.85em;">${category}</td>
             <td data-label="Fiyat" class="price-cell">Bekleniyor...</td>
             <td data-label="Durum">${statusHtml}</td>
             <td data-label="Override">${overrideValue}</td>
             <td data-label="İşlem">
-                <button onclick="openEditModal('${sym}')">Düzenle</button>
+                <button onclick="openEditModal('${sym}', ${isCustom})">Düzenle</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -108,7 +112,7 @@ async function addSymbol() {
 // --- Modal Logic ---
 let currentEditingSymbol = null;
 
-function openEditModal(symbol) {
+function openEditModal(symbol, isCustom = false) {
     currentEditingSymbol = symbol;
     document.getElementById('modalTitle').innerText = `Düzenle: ${symbol}`;
     document.getElementById('editModal').style.display = 'block';
@@ -128,12 +132,8 @@ function openEditModal(symbol) {
         document.getElementById('multiplierValue').value = '1.00';
     }
 
-    // Wire up delete button
+    // Sil butonu: sadece admin'in eklediği (custom) sembollerde görünsün
     const deleteBtn = document.getElementById('deleteSymbolBtn');
-
-    // config.symbols içinde objeler var, kontrol et
-    const isCustom = config.symbols.some(s => (typeof s === 'string' ? s : s.name) === symbol);
-
     if (isCustom) {
         deleteBtn.style.display = 'block';
         deleteBtn.onclick = () => deleteSymbol(symbol);

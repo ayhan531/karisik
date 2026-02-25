@@ -28,23 +28,39 @@ const saveConfig = (config) => {
 router.get('/config', (req, res) => {
     const config = getConfig();
 
-    // Server'dan aktif sembol listesini al (memory'deki)
-    let allSymbols = [];
-    if (req.app.locals.getActiveSymbols) {
-        allSymbols = req.app.locals.getActiveSymbols();
+    // Admin'in el ile eklediği semboller (config.json'dan)
+    const customSymbolNames = new Set(
+        config.symbols.map(s => (typeof s === 'string' ? s : s.name))
+    );
+
+    // Özel sembolleri obje formatında hazırla (silinebilir)
+    const customSymbols = config.symbols.map(s => {
+        if (typeof s === 'string') {
+            return { name: s.split(':').pop(), category: 'DİĞER', isCustom: true };
+        }
+        return { name: s.name, category: s.category || 'DİĞER', isCustom: true };
+    });
+
+    // Server'daki tüm aktif sembolleri al (symbols.js'den gelenler)
+    let systemSymbols = [];
+    if (req.app.locals.getSymbolsData) {
+        const symbolsData = req.app.locals.getSymbolsData();
+        Object.entries(symbolsData).forEach(([category, syms]) => {
+            syms.forEach(name => {
+                const cleanName = name.replace(/\s*\/\/.*/, '').trim(); // yorum satırlarını temizle
+                if (!customSymbolNames.has(cleanName)) {
+                    systemSymbols.push({ name: cleanName, category, isCustom: false });
+                }
+            });
+        });
     }
 
-    // Config'deki özel sembolleri mapleyelim (Array of objects formatında dönelim)
-    // s string ise (eski versiyon), name olarak ata. Obj ise zaten name/category vardır.
-    const customSymbols = config.symbols.map(s => {
-        if (typeof s === 'string') return { name: s.split(':').pop(), category: 'DİĞER', original: s };
-        return { name: s.name, category: s.category || 'DİĞER', original: s.name };
-    });
+    // Hepsini birleştir: önce sistem, sonra özel
+    const allSymbols = [...systemSymbols, ...customSymbols];
 
     res.json({
         ...config,
-        symbols: customSymbols,
-        allActiveSymbols: allSymbols // Sadece debug için
+        symbols: allSymbols
     });
 });
 

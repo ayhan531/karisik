@@ -169,6 +169,9 @@ app.locals.getActiveSymbols = () => {
     });
 };
 
+// Admin panelinin tüm kategorilere erişebilmesi için
+app.locals.getSymbolsData = () => symbolsData;
+
 const symbolMapping = {
     // ENDEKSLER (TVC her zaman veri verir)
     'XU100': 'BIST:XU100',
