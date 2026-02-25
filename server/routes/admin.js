@@ -1,34 +1,37 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import ConfigModel from '../models/Config.js';
 
 const router = express.Router();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const configFile = path.join(__dirname, '../data/config.json');
 
-// Yardımcı Fonksiyonlar
-const getConfig = () => {
-    try {
-        if (!fs.existsSync(configFile)) {
-            fs.writeFileSync(configFile, JSON.stringify({ symbols: [], overrides: {}, delay: 0 }));
-        }
-        return JSON.parse(fs.readFileSync(configFile, 'utf8'));
-    } catch (e) {
-        return { symbols: [], overrides: {}, delay: 0 };
+// Yardımcı Fonksiyonlar (MongoDB)
+const getConfig = async () => {
+    let config = await ConfigModel.findOne({ key: 'global' });
+    if (!config) {
+        config = new ConfigModel({
+            key: 'global',
+            symbols: [],
+            overrides: {},
+            delay: 0
+        });
+        await config.save();
     }
+    // Mongoose belgesini düz objeye çevir
+    return config.toObject();
 };
 
-const saveConfig = (config) => {
-    fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+const saveConfig = async (newConfigData) => {
+    await ConfigModel.findOneAndUpdate(
+        { key: 'global' },
+        newConfigData,
+        { upsert: true, new: true }
+    );
 };
 
 // 1. Mevcut Ayarları ve Aktif Sembolleri Getir
-router.get('/config', (req, res) => {
-    const config = getConfig();
+router.get('/config', async (req, res) => {
+    const config = await getConfig();
 
-    // Admin'in el ile eklediği semboller (config.json'dan)
+    // Admin'in el ile eklediği semboller (Veritabanından)
     const customSymbolNames = new Set(
         config.symbols.map(s => (typeof s === 'string' ? s : s.name))
     );
@@ -65,21 +68,22 @@ router.get('/config', (req, res) => {
 });
 
 // 2. Yeni Sembol Ekle
-router.post('/symbol', (req, res) => {
+router.post('/symbol', async (req, res) => {
     const { symbol, category } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
 
-    const config = getConfig();
+    const config = await getConfig();
 
     // Var mı kontrol et
-    const exists = config.symbols.some(s => {
+    const exists = (config.symbols || []).some(s => {
         const sName = typeof s === 'string' ? s : s.name;
         return sName === symbol;
     });
 
     if (!exists) {
-        config.symbols.push({ name: symbol, category: category || 'DİĞER' });
-        saveConfig(config);
+        if (!config.symbols) config.symbols = [];
+        config.symbols.push({ name: symbol, category: category || 'DİĞER', isCustom: true });
+        await saveConfig(config);
 
         // Server'a sinyal gönder
         if (req.app.locals.addSymbolToStream) {
@@ -90,23 +94,24 @@ router.post('/symbol', (req, res) => {
 });
 
 // 3. Fiyat/Çarpan Override Et
-router.post('/override', (req, res) => {
+router.post('/override', async (req, res) => {
     const { symbol, price, multiplier } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
 
-    const config = getConfig();
+    const config = await getConfig();
 
     // Eğer price veya multiplier yoksa, override'ı kaldır (Reset)
     if (price === undefined && multiplier === undefined) {
-        delete config.overrides[symbol];
+        if (config.overrides) delete config.overrides[symbol];
     } else {
+        if (!config.overrides) config.overrides = {};
         config.overrides[symbol] = {
             type: price !== undefined ? 'fixed' : 'multiplier',
             value: price !== undefined ? parseFloat(price) : parseFloat(multiplier)
         };
     }
 
-    saveConfig(config);
+    await saveConfig(config);
     // Server'a sinyal gönder: Anlık override değişti
     if (req.app.locals.updateOverrides) {
         req.app.locals.updateOverrides(config.overrides);
@@ -115,11 +120,11 @@ router.post('/override', (req, res) => {
 });
 
 // 4. Gecikme (Delay) Ayarla
-router.post('/delay', (req, res) => {
+router.post('/delay', async (req, res) => {
     const { delay } = req.body;
-    const config = getConfig();
+    const config = await getConfig();
     config.delay = parseInt(delay) || 0;
-    saveConfig(config);
+    await saveConfig(config);
 
     // Server'a sinyal gönder
     if (req.app.locals.updateDelay) {
@@ -129,21 +134,21 @@ router.post('/delay', (req, res) => {
 });
 
 // 5. Sembol Sil
-router.delete('/symbol/:symbol', (req, res) => {
+router.delete('/symbol/:symbol', async (req, res) => {
     const { symbol } = req.params;
-    const config = getConfig();
+    const config = await getConfig();
 
-    const initialLength = config.symbols.length;
+    const initialLength = (config.symbols || []).length;
     // Nesne yapısına göre filtrele
-    config.symbols = config.symbols.filter(s => {
+    config.symbols = (config.symbols || []).filter(s => {
         const sName = typeof s === 'string' ? s : s.name;
         // Hem tam adı hem de temizlenmiş halini kontrol et
         return sName !== symbol && sName.split(':').pop() !== symbol;
     });
 
     if (config.symbols.length !== initialLength) {
-        delete config.overrides[symbol];
-        saveConfig(config);
+        if (config.overrides) delete config.overrides[symbol];
+        await saveConfig(config);
 
         if (req.app.locals.removeSymbolFromStream) {
             req.app.locals.removeSymbolFromStream(symbol);

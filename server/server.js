@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 import session from 'express-session';
 import rateLimit from 'express-rate-limit';
+import mongoose from 'mongoose';
+import ConfigModel from './models/Config.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import fs from 'fs';
@@ -70,12 +72,11 @@ const isAuthenticated = (req, res, next) => {
 // --- ROUTES ---
 
 // 1. PUBLIC API'ler (Middleware'den önce gelsin ki takılmasın)
-app.get('/api/public-symbols', (req, res) => {
+// 1. PUBLIC API'ler (Middleware'den önce gelsin ki takılmasın)
+app.get('/api/public-symbols', async (req, res) => {
     try {
-        const configFile = path.join(__dirname, 'data/config.json');
-        if (fs.existsSync(configFile)) {
-            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            // Normalize symbols to objects for frontend
+        let config = await ConfigModel.findOne({ key: 'global' });
+        if (config) {
             const normalized = (config.symbols || []).map(s => {
                 if (typeof s === 'string') return { name: s, category: 'DİĞER' };
                 return s;
@@ -108,24 +109,6 @@ app.use('/api/admin', isAuthenticated, adminRoutes);
 // 4. GENERAL STATIC
 app.use(express.static(path.join(__dirname, '../'), { index: 'index.html' }));
 
-const server = app.listen(PORT, () => {
-    console.log(`🚀 Server ${PORT} portunda yayında`);
-    setTimeout(startTradingViewConnection, 2000);
-});
-
-const wss = new WebSocketServer({
-    server,
-    verifyClient: (info, callback) => {
-        const url = new URL(info.req.url, `http://${info.req.headers.host}`);
-        const token = url.searchParams.get('token');
-        if (token === API_SECRET) {
-            callback(true);
-        } else {
-            callback(false, 401, 'Yetkisiz WebSocket Bağlantısı');
-        }
-    }
-});
-
 let browser = null;
 let page = null;
 let latestPrices = {};
@@ -134,6 +117,57 @@ let lastDataTime = Date.now();
 let activeSymbols = [];
 let globalDelay = 0;
 let priceOverrides = {};
+
+// MongoDB Bağlantısı ve Sunucu Başlatma
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBEw7vST9gH6@cluster0.z2s3t.mongodb.net/karisik?retryWrites=true&w=majority&appName=Cluster0')
+    .then(async () => {
+        console.log('✅ MongoDB Bağlantısı Başarılı');
+
+        // Uygulama başlarken DB'den eski ayarları al
+        const config = await ConfigModel.findOne({ key: 'global' });
+        if (config) {
+            if (config.delay) globalDelay = config.delay;
+            if (config.overrides) {
+                // Mongoose map to plain JS object
+                priceOverrides = Object.fromEntries(config.overrides.entries());
+            }
+        }
+
+        const server = app.listen(PORT, () => {
+            console.log(`🚀 Server ${PORT} portunda yayında`);
+            setTimeout(startTradingViewConnection, 2000);
+        });
+
+        const wss = new WebSocketServer({
+            server,
+            verifyClient: (info, callback) => {
+                const url = new URL(info.req.url, `http://${info.req.headers.host}`);
+                const token = url.searchParams.get('token');
+                if (token === API_SECRET) {
+                    callback(true);
+                } else {
+                    callback(false, 401, 'Yetkisiz WebSocket Bağlantısı');
+                }
+            }
+        });
+
+        // WebSocket istemci yönetimi (Price Broadcast) loop'da aşağıda.
+        wss.on('connection', (ws) => {
+            Object.keys(latestPrices).forEach(sym => {
+                const p = latestPrices[sym];
+                if (p.price) {
+                    ws.send(JSON.stringify({ type: 'price_update', data: { symbol: sym, price: p.price, changePercent: p.changePercent } }));
+                }
+            });
+        });
+
+        // Broadcast'i globale attach edelim (Aşağıdaki processRawData kullanabilsin diye)
+        app.locals.wss = wss;
+
+    })
+    .catch(e => {
+        console.error('❌ MongoDB Bağlantı Hatası:', e);
+    });
 
 // Admin Hooks
 app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
@@ -353,7 +387,7 @@ function getSymbolForCategory(symbol, category) {
     return `TVC:${sym}`;
 }
 
-function prepareAllSymbols() {
+async function prepareAllSymbols() {
     const formattedSymbols = ['FX_IDC:USDTRY'];
     Object.keys(reverseMapping).forEach(key => delete reverseMapping[key]);
 
@@ -376,23 +410,20 @@ function prepareAllSymbols() {
         });
     });
 
-    // 3. Admin'den gelenleri ekle
+    // 3. Admin'den gelenleri ekle (Veritabanından)
     try {
-        const configFile = path.join(__dirname, 'data/config.json');
-        if (fs.existsSync(configFile)) {
-            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            if (config.symbols) {
-                config.symbols.forEach(s => {
-                    const sym = typeof s === 'string' ? s : s.name;
-                    const cat = typeof s === 'string' ? 'CUSTOM' : (s.category || 'CUSTOM');
+        const config = await ConfigModel.findOne({ key: 'global' });
+        if (config && config.symbols) {
+            config.symbols.forEach(s => {
+                const sym = typeof s === 'string' ? s : s.name;
+                const cat = typeof s === 'string' ? 'CUSTOM' : (s.category || 'CUSTOM');
 
-                    const ticker = getSymbolForCategory(sym, cat);
-                    if (!formattedSymbols.includes(ticker)) {
-                        formattedSymbols.push(ticker);
-                        reverseMapping[ticker] = sym;
-                    }
-                });
-            }
+                const ticker = getSymbolForCategory(sym, cat);
+                if (!formattedSymbols.includes(ticker)) {
+                    formattedSymbols.push(ticker);
+                    reverseMapping[ticker] = sym;
+                }
+            });
         }
     } catch (e) { console.error('Prepare custom symbols error:', e); }
 
@@ -420,7 +451,7 @@ async function startTradingViewConnection() {
     try { await page.exposeFunction('onDataReceived', (data) => processRawData(data)); } catch (e) { }
     try { await page.exposeFunction('onBrowserReloadRequest', () => { setTimeout(startTradingViewConnection, 5000); }); } catch (e) { }
 
-    const allSymbols = prepareAllSymbols();
+    const allSymbols = await prepareAllSymbols();
 
     await page.addInitScript((symbols) => {
         const NativeWebSocket = window.WebSocket;
@@ -551,18 +582,11 @@ function _processDataInternal(rawData) {
                             currency: latestPrices[symbol].currency
                         }
                     });
-                    wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
+                    if (app.locals.wss) {
+                        app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
+                    }
                 }
             }
         } catch (e) { }
     }
 }
-
-wss.on('connection', (ws) => {
-    Object.keys(latestPrices).forEach(sym => {
-        const p = latestPrices[sym];
-        if (p.price) {
-            ws.send(JSON.stringify({ type: 'price_update', data: { symbol: sym, price: p.price, changePercent: p.changePercent } }));
-        }
-    });
-});
