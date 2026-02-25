@@ -236,11 +236,17 @@
         <!-- Symbol List -->
         <div class="card">
             <h3>Sembol Yönetimi</h3>
-            <input type="text" id="monitorSearch" placeholder="Sembol Ara..." style="margin-bottom: 15px;"
-                onkeyup="renderTable()">
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                <input type="text" id="monitorSearch" placeholder="Sembol Ara..." style="flex: 1; margin-bottom: 0;"
+                    onkeyup="renderTable()">
+                <button class="danger" id="bulkDeleteBtn" style="display: none;"
+                    onclick="bulkDeleteSymbols()">Seçilenleri Sil</button>
+            </div>
             <table>
                 <thead>
                     <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="selectAllCheckbox"
+                                onclick="toggleSelectAll()"></th>
                         <th>Sembol</th>
                         <th>Kategori</th>
                         <th>Fiyat</th>

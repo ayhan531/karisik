@@ -16,7 +16,11 @@ const getConfig = async () => {
         await config.save();
     }
     // Mongoose belgesini düz objeye çevir
-    return config.toObject();
+    const obj = config.toObject();
+    if (obj.overrides && obj.overrides instanceof Map) {
+        obj.overrides = Object.fromEntries(obj.overrides);
+    }
+    return obj;
 };
 
 const saveConfig = async (newConfigData) => {
@@ -152,6 +156,36 @@ router.delete('/symbol/:symbol', async (req, res) => {
 
         if (req.app.locals.removeSymbolFromStream) {
             req.app.locals.removeSymbolFromStream(symbol);
+        }
+    }
+
+    res.json({ success: true, symbols: config.symbols });
+});
+
+// 6. Toplu Sembol Sil
+router.post('/symbols/bulk-delete', async (req, res) => {
+    const { symbols } = req.body;
+    if (!Array.isArray(symbols) || symbols.length === 0) {
+        return res.status(400).json({ error: 'Silinecek semboller gerekli' });
+    }
+
+    const config = await getConfig();
+    const initialLength = (config.symbols || []).length;
+
+    config.symbols = (config.symbols || []).filter(s => {
+        const sName = typeof s === 'string' ? s : s.name;
+        const cleanName = sName.split(':').pop();
+        return !symbols.includes(sName) && !symbols.includes(cleanName);
+    });
+
+    if (config.symbols.length !== initialLength) {
+        symbols.forEach(symbol => {
+            if (config.overrides) delete config.overrides[symbol];
+        });
+        await saveConfig(config);
+
+        if (req.app.locals.removeSymbolFromStream) {
+            symbols.forEach(symbol => req.app.locals.removeSymbolFromStream(symbol));
         }
     }
 

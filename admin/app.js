@@ -68,6 +68,9 @@ function renderTable() {
         const tr = document.createElement('tr');
         tr.id = `row-${sym}`;
         tr.innerHTML = `
+            <td data-label="Seç">
+                ${isCustom ? `<input type="checkbox" class="symbol-checkbox" value="${sym}" onclick="updateBulkDeleteBtn()">` : ''}
+            </td>
             <td data-label="Sembol">${sym}</td>
             <td data-label="Kategori" style="color: ${catColor}; font-size: 0.85em;">${category}</td>
             <td data-label="Fiyat" class="price-cell">Bekleniyor...</td>
@@ -79,6 +82,9 @@ function renderTable() {
         `;
         tbody.appendChild(tr);
     });
+
+    document.getElementById('selectAllCheckbox').checked = false;
+    updateBulkDeleteBtn();
 }
 
 // --- Actions ---
@@ -158,6 +164,51 @@ async function deleteSymbol(symbol) {
 
 function closeModal() {
     document.getElementById('editModal').style.display = 'none';
+}
+
+function toggleSelectAll() {
+    const isChecked = document.getElementById('selectAllCheckbox').checked;
+    // Sadece görünür durumdaki (ve checkbox olan) satırları seç
+    const checkboxes = document.querySelectorAll('.symbol-checkbox');
+    checkboxes.forEach(cb => {
+        // tr eğer display:none değilse seçimi uygula (arama filtresinde görünmüyorsa seçme)
+        if (cb.closest('tr').style.display !== 'none') {
+            cb.checked = isChecked;
+        }
+    });
+    updateBulkDeleteBtn();
+}
+
+function updateBulkDeleteBtn() {
+    const checkedBoxes = document.querySelectorAll('.symbol-checkbox:checked');
+    const deleteBtn = document.getElementById('bulkDeleteBtn');
+    if (checkedBoxes.length > 0) {
+        deleteBtn.style.display = 'block';
+        deleteBtn.innerText = `Seçilenleri Sil (${checkedBoxes.length})`;
+    } else {
+        deleteBtn.style.display = 'none';
+    }
+}
+
+async function bulkDeleteSymbols() {
+    const checkedBoxes = document.querySelectorAll('.symbol-checkbox:checked');
+    if (checkedBoxes.length === 0) return;
+
+    const symbolsToDelete = Array.from(checkedBoxes).map(cb => cb.value);
+
+    if (!confirm(`${symbolsToDelete.length} adet sembolü toplu silmek istediğinize emin misiniz?`)) return;
+
+    await apiFetch(`/api/admin/symbols/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: symbolsToDelete })
+    });
+
+    document.getElementById('selectAllCheckbox').checked = false;
+    document.getElementById('bulkDeleteBtn').style.display = 'none';
+
+    await loadConfig();
+    alert('Seçilen semboller silindi!');
 }
 
 function toggleInputs() {
