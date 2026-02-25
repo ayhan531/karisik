@@ -222,4 +222,41 @@ router.post('/symbols/bulk-override', async (req, res) => {
     res.json({ success: true, overrides: config.overrides });
 });
 
+// 8. Sembol Kategori Güncelle (Mağaza Değiştirme)
+router.post('/symbol/category', async (req, res) => {
+    const { symbol, category } = req.body;
+    if (!symbol || !category) return res.status(400).json({ error: 'Eksik veri' });
+
+    const config = await getConfig();
+    let found = false;
+
+    if (config.symbols) {
+        config.symbols = config.symbols.map(s => {
+            const sName = typeof s === 'string' ? s : s.name;
+            if (sName === symbol || sName.split(':').pop() === symbol) {
+                found = true;
+                return { name: sName, category: category, isCustom: typeof s === 'string' ? true : s.isCustom };
+            }
+            return s;
+        });
+    }
+
+    if (!found) {
+        if (!config.symbols) config.symbols = [];
+        config.symbols.push({ name: symbol, category: category, isCustom: false });
+    }
+
+    await saveConfig(config);
+
+    // Sembolün TradingView ticker formatı değişme ihtimaline karşı akıştan koparıp yeni kategoriyle ekliyoruz
+    if (req.app.locals.removeSymbolFromStream) {
+        req.app.locals.removeSymbolFromStream(symbol);
+    }
+    if (req.app.locals.addSymbolToStream) {
+        setTimeout(() => req.app.locals.addSymbolToStream(symbol, category), 500);
+    }
+
+    res.json({ success: true, symbols: config.symbols });
+});
+
 export default router;

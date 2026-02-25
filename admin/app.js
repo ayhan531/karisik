@@ -77,7 +77,7 @@ function renderTable() {
             <td data-label="Durum">${statusHtml}</td>
             <td data-label="Override">${overrideValue}</td>
             <td data-label="İşlem">
-                <button onclick="openEditModal('${sym}', ${isCustom})">Düzenle</button>
+                <button onclick="openEditModal('${sym}', '${category}', ${isCustom})">Düzenle</button>
             </td>
         `;
         tbody.appendChild(tr);
@@ -119,11 +119,14 @@ async function addSymbol() {
 let currentEditingSymbol = null;
 let isBulkEdit = false;
 
-function openEditModal(symbol, isCustom = false) {
+function openEditModal(symbol, category, isCustom = false) {
     currentEditingSymbol = symbol;
     isBulkEdit = false;
     document.getElementById('modalTitle').innerText = `Düzenle: ${symbol}`;
     document.getElementById('editModal').style.display = 'block';
+
+    document.getElementById('categoryInputGroup').style.display = 'block';
+    document.getElementById('editCategory').value = category || 'DİĞER';
 
     const override = config.overrides ? config.overrides[symbol] : null;
 
@@ -160,6 +163,7 @@ function openBulkEditModal() {
     document.getElementById('modalTitle').innerText = `Toplu Düzenle (${checkedBoxes.length} Sembol)`;
     document.getElementById('editModal').style.display = 'block';
 
+    document.getElementById('categoryInputGroup').style.display = 'none'; // Bulk editte kategoriyi gizle
     document.getElementById('overrideType').value = 'none';
     document.getElementById('fixedPrice').value = '';
     document.getElementById('multiplierValue').value = '1.00';
@@ -264,7 +268,18 @@ async function saveOverride() {
         document.getElementById('selectAllCheckbox').checked = false;
 
     } else {
+        // Individual edit: handle both override and category changes
         payload.symbol = currentEditingSymbol;
+
+        // 1. Kategoriyi Güncelle
+        const newCategory = document.getElementById('editCategory').value;
+        await apiFetch(`/api/admin/symbol/category`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: currentEditingSymbol, category: newCategory })
+        });
+
+        // 2. Override Güncelle
         await apiFetch(`/api/admin/override`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

@@ -269,6 +269,20 @@
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
             <h2 id="modalTitle">Düzenle</h2>
+
+            <div class="form-group" id="categoryInputGroup">
+                <label>Kategori (Mağaza):</label>
+                <select id="editCategory">
+                    <option value="BORSA ISTANBUL">BORSA İSTANBUL</option>
+                    <option value="KRIPTO">KRİPTO</option>
+                    <option value="EMTIA">EMTİA</option>
+                    <option value="ENDEKSLER">ENDEKSLER</option>
+                    <option value="EXCHANGE">DÖVİZ</option>
+                    <option value="STOCKS">HİSSELER (ABD)</option>
+                    <option value="DİĞER">DİĞER</option>
+                </select>
+            </div>
+
             <div class="form-group">
                 <label>Mod:</label>
                 <select id="overrideType" onchange="toggleInputs()">
@@ -290,7 +304,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
 </body>
 
 </html>
