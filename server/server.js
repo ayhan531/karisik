@@ -374,8 +374,9 @@ function getSymbolForCategory(symbol, category) {
         if (sym.endsWith('USDT')) return `BINANCE:${sym}`;
         if (sym.endsWith('TRY')) return `BINANCE:${sym}`;
         if (sym.endsWith('USD')) return `BINANCE:${sym.slice(0, -3)}USDT`;
+        if (sym.includes('USD')) return `BINANCE:${sym.replace('USD', 'USDT')}`;
         if (sym.endsWith('BTC')) return `BINANCE:${sym}`;
-        return `BINANCE:${sym}USDT`; // Sadece coin ismi yazılmışsa USDT çifti dene
+        return `BINANCE:${sym}USDT`;
     }
 
     if (category === 'STOCKS') {
@@ -580,10 +581,12 @@ function _processDataInternal(rawData) {
                 }
 
                 mappedSymbols.forEach(symbol => {
+                    // Normalize BIST specials
                     if (symbol === 'TKFEN') symbol = 'TEKFEN';
                     if (symbol === 'ARCLK') symbol = 'BEKO';
-                    if (symbol === 'XAUTRYG' && (!reverseMapping[tvTicker] || !reverseMapping[tvTicker].includes('XAUTRYG'))) symbol = 'GLDGR';
+                    if (symbol === 'XUSIN') symbol = 'XSINA';
                     if (symbol === '399001') symbol = 'SZSE';
+                    if (tvTicker === 'FX_IDC:XAUTRYG') symbol = 'GLDGR';
 
                     let finalPrice = values.lp;
                     if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
