@@ -25,15 +25,41 @@ class TradingApp {
             const res = await fetch('/api/public-symbols');
             const data = await res.json();
             if (data.symbols && data.symbols.length > 0) {
-                // Normalize and add to "DİĞER" category
-                const cleanSymbols = data.symbols.map(s => s.split(':').pop());
-                this.symbols['DİĞER'] = cleanSymbols;
+                // Sadece son parçayı (clean name) alıp "DİĞER" kategorisine ekle
+                const cleanSymbols = data.symbols.map(s => {
+                    const mapped = this.getCleanName(s);
+                    return mapped;
+                });
+
+                // Mevcut symbolsData'yı bozmadan "DİĞER" kategorisini ekle/güncelle
+                this.symbols = {
+                    ...symbolsData,
+                    'DİĞER': cleanSymbols
+                };
+
                 this.renderFilters();
                 this.renderList();
+                console.log('✅ Özel semboller yüklendi:', cleanSymbols);
             }
         } catch (e) {
             console.error('Custom symbols fetch failed:', e);
         }
+    }
+
+    getCleanName(sym) {
+        // server.js'deki reverseMapping mantığı ile uyumlu olmalı
+        const specialMappings = {
+            'BIST:XUSIN': 'XSINA',
+            'TVC:UKOIL': 'BRENT',
+            'FX_IDC:XAUTRYG': 'GLDGR',
+            'SZSE:399001': 'SZSE',
+            'BIST:XU0301!': 'X30YVADE',
+            'BIST:TKFEN': 'TEKFEN',
+            'BIST:KOZAA': 'KOZAA',
+            'BIST:ARCLK': 'BEKO'
+        };
+        if (specialMappings[sym]) return specialMappings[sym];
+        return sym.split(':').pop().replace('USDT', '');
     }
 
     // TradingView Proxy'e WebSocket bağlantısı
