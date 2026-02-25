@@ -154,26 +154,35 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
 
     // Mevcut WS oturumuna inject etmeyi dene; başarısız olursa reconnect yap
     if (page) {
-        page.evaluate((tvTicker) => {
+        page.evaluate(({ tvTicker, allSymbols }) => {
             try {
                 if (window.tvSocket && window.tvSocket.readyState === 1 && window._tvSessionId) {
                     const constructMessage = (func, paramList) => {
                         const json = JSON.stringify({ m: func, p: paramList });
                         return `~m~${json.length}~m~${json}`;
                     };
-                    window.tvSocket.send(constructMessage('quote_add_symbols', [window._tvSessionId, tvTicker]));
+
+                    const sessionId = window._tvSessionId;
+
+                    // Sembolü ekle
+                    window.tvSocket.send(constructMessage('quote_add_symbols', [sessionId, tvTicker]));
+
+                    // TradingView'in anlık (tick-by-tick) fiyatları göndermeye devam etmesi için 
+                    // tüm listeyi fast stream'e almasını söyle. Aksi takdirde 1 kez fiyat yollayıp durur.
+                    window.tvSocket.send(constructMessage('quote_fast_symbols', [sessionId, ...allSymbols]));
+
                     return true;
                 }
                 return false;
             } catch (e) {
                 return false;
             }
-        }, ticker).then(success => {
+        }, { tvTicker: ticker, allSymbols: activeSymbols }).then(success => {
             if (!success) {
                 console.log(`⚠️ Anlık enjeksiyon başarısız (${ticker}), reconnect başlatılıyor...`);
                 setTimeout(() => startTradingViewConnection(), 1000);
             } else {
-                console.log(`✅ Sembol canlı enjekte edildi: ${ticker}`);
+                console.log(`✅ Sembol canlı enjekte edildi ve fast stream güncellendi: ${ticker}`);
             }
         }).catch(() => {
             setTimeout(() => startTradingViewConnection(), 1000);
