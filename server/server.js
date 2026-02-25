@@ -205,6 +205,9 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
         activeSymbols.push(ticker);
     }
 
+    // Reverse mapping'de asıl girilen ismi (XRPUSD vs) de tutalım ki socket'ten geri basarken bulabilsin.
+    addMapping(ticker, symbol);
+
     // Mevcut WS oturumuna inject etmeyi dene; başarısız olursa reconnect yap
     if (page) {
         page.evaluate(({ tvTicker, allSymbols }) => {
@@ -636,6 +639,27 @@ function _processDataInternal(rawData) {
                         });
                         if (app.locals.wss) {
                             app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
+                        }
+
+                        // XRPUSD and similar crypto quick-fixes: if we have "XRPUSDT" internal mapped, 
+                        // also send out an update for "XRPUSD" since user entered it that way.
+                        // Same for any symbol that has a trailing 'T' but the user might have entered the generic USD form.
+                        if (symbol.endsWith('USDT')) {
+                            const withoutT = symbol.slice(0, -1);
+                            // If withoutT is in reverseMapping or activeSymbols, broadcast it too.
+                            // To be safe, just broadcast the synthetic 'withoutT' version as well so it hits the frontend either way.
+                            const broadcastMsgAlt = JSON.stringify({
+                                type: 'price_update',
+                                data: {
+                                    symbol: withoutT,
+                                    price: latestPrices[symbol].price,
+                                    changePercent: latestPrices[symbol].changePercent,
+                                    currency: latestPrices[symbol].currency
+                                }
+                            });
+                            if (app.locals.wss) {
+                                app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsgAlt); });
+                            }
                         }
                     }
                 });
