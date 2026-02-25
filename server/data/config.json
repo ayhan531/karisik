@@ -1,10 +1,30 @@
 {
   "symbols": [
-    "BIST:GUBRF",
-    "BIST:THYAO",
-    "BINANCE:BTCUSDT",
-    "USDTRY"
+    {
+      "name": "GUBRF",
+      "category": "BORSA ISTANBUL"
+    },
+    {
+      "name": "ETHUSDT",
+      "category": "KRIPTO"
+    },
+    {
+      "name": "WHEAT",
+      "category": "EMTIA"
+    },
+    {
+      "name": "SPX",
+      "category": "ENDEKSLER"
+    },
+    {
+      "name": "EURUSD",
+      "category": "EXCHANGE"
+    },
+    {
+      "name": "AAPL",
+      "category": "STOCKS"
+    }
   ],
   "overrides": {},
-  "delay": 100
+  "delay": 0
 }
