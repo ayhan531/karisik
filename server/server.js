@@ -150,59 +150,46 @@ app.locals.getActiveSymbols = () => {
 };
 
 const symbolMapping = {
-    'XU100': 'BIST:XU100',
-    'XU030': 'BIST:XU030',
-    'XBANK': 'BIST:XBANK',
+    // Sadece özel/istisna durumlar için burayı kullanıyoruz
     'XSINA': 'BIST:XUSIN',
-    'XUTUM': 'BIST:XUTUM',
-    'X30YVADE': 'BIST:XU0301!',
-    'CAC40': 'TVC:CAC40',
-    'NI225': 'TVC:NI225',
-    'DJI': 'TVC:DJI',
-    'SZSE': 'SZSE:399001',
-    'DAX': 'TVC:DAX',
-    'UKX': 'TVC:UKX',
-    'HSI': 'TVC:HSI',
-    'NDX': 'TVC:NDX',
-    'SPX': 'TVC:SPX',
     'BRENT': 'TVC:UKOIL',
     'GLDGR': 'FX_IDC:XAUTRYG',
-    'XAUTRY': 'FX_IDC:XAUTRY',
-    'XAGTRY': 'FX_IDC:XAGTRY',
-    'USOIL': 'TVC:USOIL',
-    'NG1!': 'NYMEX:NG1!',
-    'COPPER': 'COMEX:HG1!',
-    'GOLD': 'TVC:GOLD',
-    'SILVER': 'TVC:SILVER',
+    'SZSE': 'SZSE:399001',
+    'X30YVADE': 'BIST:XU0301!',
     'TEKFEN': 'BIST:TKFEN',
     'KOZAA': 'BIST:KOZAA',
-    'BEKO': 'BIST:ARCLK',
-    'MKRTRY': 'BINANCE:MKRUSDT',
-    'FTMTRY': 'BINANCE:FTMUSDT',
-    'EOSTRY': 'BINANCE:EOSUSDT',
-    'FLOWTRY': 'BINANCE:FLOWUSDT',
-    'KAVATRY': 'BINANCE:KAVAUSDT',
-    'QNTTRY': 'BINANCE:QNTUSDT',
-    'FXSTRY': 'BINANCE:FXSUSDT',
-    'SSVTRY': 'BINANCE:SSVUSDT',
-    'RUNETRY': 'BINANCE:RUNEUSDT'
+    'BEKO': 'BIST:ARCLK'
 };
-
-const nyseStocks = [
-    'IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'MCD',
-    'NKE', 'WMT', 'TGT', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX',
-    'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM'
-];
 
 function getSymbolForCategory(symbol, category) {
     if (symbolMapping[symbol]) return symbolMapping[symbol];
-    if (category === 'BORSA ISTANBUL') return `BIST:${symbol}`;
-    if (category === 'KRIPTO') return `BINANCE:${symbol}`;
-    if (category === 'EXCHANGE') return `FX_IDC:${symbol}`;
-    if (category === 'STOCKS') {
-        return nyseStocks.includes(symbol) ? `NYSE:${symbol}` : `NASDAQ:${symbol}`;
+
+    // Akıllı Tahminleme (Smart Guessing)
+    const sym = symbol.toUpperCase();
+
+    // 1. Kategoriye göre öncelik
+    if (category === 'BORSA ISTANBUL' || category === 'ENDEKSLER') return `BIST:${sym}`;
+    if (category === 'KRIPTO') return `BINANCE:${sym}`;
+    if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
+    if (category === 'STOCKS') return nyseStocks.includes(sym) ? `NYSE:${sym}` : `NASDAQ:${sym}`;
+
+    // 2. Sembol yapısına göre tahmin (CUSTOM eklemeler için)
+    if (sym.endsWith('TRY')) {
+        // Eğer USD, EUR gibi bir döviz ise FX_IDC, değilse (BTC vb) BINANCE
+        const currencies = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD'];
+        const base = sym.replace('TRY', '');
+        return currencies.includes(base) ? `FX_IDC:${sym}` : `BINANCE:${sym}`;
     }
-    return symbol;
+
+    // Altın/Gümüş gibi emtialar için TVC veya FX_IDC
+    if (['GOLD', 'SILVER', 'PLATINUM', 'PALLADIUM'].includes(sym)) return `TVC:${sym}`;
+
+    // Eğer 5 karakterden kısaysa ve sadece harfse büyük ihtimalle BIST hissesidir
+    if (sym.length >= 3 && sym.length <= 6 && /^[A-Z0-9]+$/.test(sym)) {
+        return `BIST:${sym}`;
+    }
+
+    return sym;
 }
 
 function prepareAllSymbols() {
@@ -210,16 +197,21 @@ function prepareAllSymbols() {
 
     // Default Symbols
     Object.entries(symbolsData).forEach(([category, symbols]) => {
-        symbols.forEach(sym => { formattedSymbols.push(getSymbolForCategory(sym, category)); });
+        symbols.forEach(sym => {
+            formattedSymbols.push(getSymbolForCategory(sym, category));
+        });
     });
 
-    // Config Symbols
+    // Config Symbols (Admin'den eklenenler)
     try {
         const configFile = path.join(__dirname, 'data/config.json');
         if (fs.existsSync(configFile)) {
             const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
             if (config.symbols) {
-                config.symbols.forEach(sym => formattedSymbols.push(getSymbolForCategory(sym, 'CUSTOM')));
+                config.symbols.forEach(sym => {
+                    // Kategori belirtilmediği için tahminleme kullanacak
+                    formattedSymbols.push(getSymbolForCategory(sym, 'CUSTOM'));
+                });
             }
             if (config.overrides) priceOverrides = config.overrides;
             if (config.delay) globalDelay = config.delay;
@@ -228,6 +220,28 @@ function prepareAllSymbols() {
 
     const uniqueSymbols = [...new Set(formattedSymbols)];
     activeSymbols = uniqueSymbols;
+
+    // Reverse mapping'i de her hazırlıkta temizleyip yeniden kuralım
+    Object.keys(reverseMapping).forEach(key => delete reverseMapping[key]);
+    uniqueSymbols.forEach(fullTicker => {
+        const parts = fullTicker.split(':');
+        const cleanName = parts.pop();
+
+        // Eğer özel bir mapleme yoksa, son parçayı (THYAO vb.) anahtar olarak kullan
+        // Ama özel bir mapleme varsa o kalsın
+        let foundSpecial = false;
+        for (const [key, value] of Object.entries(symbolMapping)) {
+            if (value === fullTicker) {
+                reverseMapping[fullTicker] = key;
+                foundSpecial = true;
+                break;
+            }
+        }
+        if (!foundSpecial) {
+            reverseMapping[fullTicker] = cleanName;
+        }
+    });
+
     return uniqueSymbols;
 }
 
