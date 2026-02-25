@@ -394,7 +394,7 @@ function getSymbolForCategory(symbol, category) {
     for (const suffix of cryptoSuffixes) {
         if (sym.endsWith(suffix)) {
             const base = sym.slice(0, -suffix.length);
-            if (knownCryptos.has(base) || base.length <= 6) {
+            if (knownCryptos.has(base)) {
                 if (suffix === 'USD') return `BINANCE:${base}USDT`;
                 return `BINANCE:${sym}`;
             }
