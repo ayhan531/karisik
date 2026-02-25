@@ -217,11 +217,12 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
 
                     const sessionId = window._tvSessionId;
 
+                    // Sembol zaten eklenmiş mi kontrol et ama her ihtimale karşı tekrar yolla (TV bazen yutabiliyor)
                     // Sembolü ekle
                     window.tvSocket.send(constructMessage('quote_add_symbols', [sessionId, tvTicker]));
 
-                    // TradingView'in anlık (tick-by-tick) fiyatları göndermeye devam etmesi için 
-                    // tüm listeyi fast stream'e almasını söyle. Aksi takdirde 1 kez fiyat yollayıp durur.
+                    // Tüm listeyi (yeni sembol dahil) fast stream'e al. 
+                    // Bu, TradingView'in sadece tek bir snapshot yollayıp durmasını engeller.
                     window.tvSocket.send(constructMessage('quote_fast_symbols', [sessionId, ...allSymbols]));
 
                     return true;
