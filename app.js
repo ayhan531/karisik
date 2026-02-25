@@ -125,26 +125,25 @@ class TradingApp {
 
     // Gerçek fiyat güncellemesi
     handlePriceUpdate(data) {
-        // Server zaten normalize edilmiş sembol gönderiyor (örn: BTC, THYAO)
         const symbol = data.symbol;
         this.prices[symbol] = data;
 
-        // DOM'u güncelle
         const priceEl = document.getElementById(`price-${symbol}`);
         const changeEl = document.getElementById(`change-${symbol}`);
 
         if (priceEl && data.price !== undefined) {
-            const oldPrice = parseFloat(priceEl.innerText.replace(/[^0-9.-]/g, '')) || 0;
+            const oldPrice = parseFloat(priceEl.innerText.split(' ')[0].replace(/[^0-9.-]/g, '')) || 0;
             const newPrice = parseFloat(data.price);
+            const currencySuffix = data.currency === 'USD' ? ' (USD)' : ' (TL)';
 
-            // Fiyatı formatla (Akıllı)
-            priceEl.innerText = this.formatPrice(newPrice);
+            // Fiyatı formatla + Suffix ekle
+            priceEl.innerText = this.formatPrice(newPrice) + currencySuffix;
 
             // Flash animasyonu
             if (newPrice > oldPrice) {
-                this.flashElement(priceEl, '#48bb78'); // Yeşil
+                this.flashElement(priceEl, '#48bb78');
             } else if (newPrice < oldPrice) {
-                this.flashElement(priceEl, '#f56565'); // Kırmızı
+                this.flashElement(priceEl, '#f56565');
             }
         }
 
@@ -189,10 +188,10 @@ class TradingApp {
 
         listContainer.innerHTML = filteredSymbols.map(sym => {
             const cachedData = this.prices[sym];
+            const priceVal = cachedData?.price !== undefined ? this.formatPrice(cachedData.price) : 'Bekleniyor';
+            const currencySuffix = cachedData?.currency ? (cachedData.currency === 'USD' ? ' (USD)' : ' (TL)') : '';
+            const price = priceVal + (priceVal !== 'Bekleniyor' ? currencySuffix : '');
 
-            // EN SON VERİYİ GÖSTER - "..." KULLANMA
-            // Eğer veri varsa göster, yoksa "Bekleniyor" desin ama bir kere geldikten sonra hep görünsün
-            const price = cachedData?.price !== undefined ? this.formatPrice(cachedData.price) : 'Bekleniyor';
             const change = cachedData?.changePercent || 0;
             const isPositive = change >= 0;
 

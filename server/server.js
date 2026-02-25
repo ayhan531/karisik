@@ -402,10 +402,7 @@ function _processDataInternal(rawData) {
                 }
 
                 let finalPrice = values.lp;
-
-                // 🛑 DIREKT FIYAT - MANUEL HESAPLAMA KALDIRILDI
-                // Kullanıcı isteği üzerine kur ile çarpma işlemini iptal ettik.
-                // TradingView'den gelen ham fiyatı basıyoruz (TRY çiftlerini seçtiğimiz için zaten TL gelecek).
+                let currency = values.currency_code || (tvTicker.includes('TRY') ? 'TRY' : 'USD');
 
                 // 🛑 OVERRIDE KONTROLÜ
                 if (priceOverrides[symbol]) {
@@ -422,11 +419,17 @@ function _processDataInternal(rawData) {
                 if (!latestPrices[symbol]) latestPrices[symbol] = {};
                 if (finalPrice) latestPrices[symbol].price = finalPrice;
                 if (values.chp) latestPrices[symbol].changePercent = values.chp;
+                latestPrices[symbol].currency = currency;
 
                 if (latestPrices[symbol].price) {
                     const broadcastMsg = JSON.stringify({
                         type: 'price_update',
-                        data: { symbol: symbol, price: latestPrices[symbol].price, changePercent: latestPrices[symbol].changePercent }
+                        data: {
+                            symbol: symbol,
+                            price: latestPrices[symbol].price,
+                            changePercent: latestPrices[symbol].changePercent,
+                            currency: latestPrices[symbol].currency
+                        }
                     });
                     wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                 }
