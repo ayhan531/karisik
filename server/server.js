@@ -30,16 +30,29 @@ const symbolMapping = {
     'USOIL': 'TVC:USOIL', 'NG1!': 'NYMEX:NG1!', 'NATGAS': 'NYMEX:NG1!', 'NATURALGAS': 'NYMEX:NG1!',
     'NGAS': 'NYMEX:NG1!', 'GOLD': 'FX_IDC:XAUTRY', 'SILVER': 'FX_IDC:XAGTRY',
     'XAUTRY': 'FX_IDC:XAUTRY', 'XAGTRY': 'FX_IDC:XAGTRY', 'GLDGR': 'FX_IDC:XAUTRYG',
-    'XAUUSD': 'OANDA:XAUUSD', 'XAGUSD': 'OANDA:XAGUSD', 'BTC': 'BINANCE:BTCUSDT',
-    'ETH': 'BINANCE:ETHUSDT', 'SOL': 'BINANCE:SOLUSDT', 'XRP': 'BINANCE:XRPUSDT',
-    'BTCUSDT': 'BINANCE:BTCUSDT', 'ETHUSDT': 'BINANCE:ETHUSDT', 'BTCTRY': 'BINANCE:BTCTRY',
-    'ETHTRY': 'BINANCE:ETHTRY', 'GBPTRY': 'FX_IDC:GBPTRY', 'USDCHF': 'FX_IDC:USDCHF',
+    'XAUUSD': 'OANDA:XAUUSD', 'XAGUSD': 'OANDA:XAGUSD',
+    'PLATINUM': 'NYMEX:PL1!', 'PALLADIUM': 'NYMEX:PA1!', 'CORN': 'CBOT:ZC1!',
+    'WHEAT': 'CBOT:ZW1!', 'SOYBEAN': 'CBOT:ZS1!', 'SUGAR': 'ICEUS:SB1!',
+    'COFFEE': 'ICEUS:KC1!', 'COTTON': 'ICEUS:CT1!', 'COPPER': 'COMEX:HG1!',
+    'USDTRY': 'FX_IDC:USDTRY', 'EURTRY': 'FX_IDC:EURTRY', 'GBPTRY': 'FX_IDC:GBPTRY',
+    'EURUSD': 'FX_IDC:EURUSD', 'GBPUSD': 'FX_IDC:GBPUSD', 'USDJPY': 'FX_IDC:USDJPY',
+    'USDCHF': 'FX_IDC:USDCHF', 'USDCAD': 'FX_IDC:USDCAD', 'AUDUSD': 'FX_IDC:AUDUSD',
+    'NZDUSD': 'FX_IDC:NZDUSD', 'EURGBP': 'FX_IDC:EURGBP', 'EURJPY': 'FX_IDC:EURJPY',
+    'GBPJPY': 'FX_IDC:GBPJPY', 'AUDJPY': 'FX_IDC:AUDJPY', 'CADJPY': 'FX_IDC:CADJPY',
+    'CHFJPY': 'FX_IDC:CHFJPY', 'EURAUD': 'FX_IDC:EURAUD', 'EURCAD': 'FX_IDC:EURCAD',
+    'EURCHF': 'FX_IDC:EURCHF', 'GBPAUD': 'FX_IDC:GBPAUD', 'GBPCAD': 'FX_IDC:GBPCAD',
+    'AUDCAD': 'FX_IDC:AUDCAD', 'AUDCHF': 'FX_IDC:AUDCHF', 'NZDJPY': 'FX_IDC:NZDJPY',
+    'AUDNZD': 'FX_IDC:AUDNZD',
+    'BTC': 'BINANCE:BTCUSDT', 'ETH': 'BINANCE:ETHUSDT', 'SOL': 'BINANCE:SOLUSDT',
+    'BTCUSDT': 'BINANCE:BTCUSDT', 'ETHUSDT': 'BINANCE:ETHUSDT', 'SOLUSDT': 'BINANCE:SOLUSDT',
+    'BTCTRY': 'BINANCE:BTCTRY', 'ETHTRY': 'BINANCE:ETHTRY', 'SOLTRY': 'BINANCE:SOLTRY',
+    'BNBTRY': 'BINANCE:BNBTRY', 'XRPTRY': 'BINANCE:XRPTRY', 'ADATRY': 'BINANCE:ADATRY',
+    'AVAXTRY': 'BINANCE:AVAXTRY', 'DOGETRY': 'BINANCE:DOGETRY', 'SHIBTRY': 'BINANCE:SHIBTRY',
+    'DOTTRY': 'BINANCE:DOTTRY', 'LINKTRY': 'BINANCE:LINKTRY', 'TRXTRY': 'BINANCE:TRXTRY',
     'TEKFEN': 'BIST:TKFEN', 'KOZAA': 'BIST:KOZAA', 'BEKO': 'BIST:ARCLK', 'ARCLK': 'BIST:ARCLK'
 };
 
-const knownCryptos = new Set(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE', 'SHIB', 'DOT', 'LINK', 'TRX', 'POL', 'LTC']);
-const nasdaqStocks = new Set(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'AMD', 'INTC']);
-const nyseStocksSet = new Set(['IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'PEP']);
+const nyseSet = new Set(['IBM', 'V', 'MA', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BA', 'DIS', 'KO', 'PEP', 'MCD', 'SBUX', 'NKE', 'WMT', 'TGT', 'COST', 'PG', 'JNJ', 'PFE', 'MRK', 'ABBV', 'LLY', 'UNH', 'XOM', 'CVX', 'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'TMUS', 'VZ', 'T', 'RACE']);
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -52,7 +65,7 @@ app.use(session({
 
 const isAuthenticated = (req, res, next) => {
     if (req.session.authenticated || req.path.startsWith('/api/auth/')) return next();
-    if (req.path === '/api/public-symbols' || req.path === '/api/prices') return next();
+    if (req.path === '/api/public-symbols') return next();
     return next();
 };
 
@@ -77,9 +90,10 @@ function quickGuessSymbol(sym, category) {
     if (s.includes(':')) return s;
     if (symbolMapping[s]) return symbolMapping[s];
     if (category === 'BORSA ISTANBUL') return `BIST:${s}`;
-    if (category === 'KRIPTO' || knownCryptos.has(s)) return `BINANCE:${s}USDT`;
-    if (nasdaqStocks.has(s)) return `NASDAQ:${s}`;
-    if (nyseStocksSet.has(s)) return `NYSE:${s}`;
+    if (category === 'KRIPTO' || s.endsWith('TRY') || s.endsWith('USDT')) return `BINANCE:${s}`;
+    if (category === 'EXCHANGE') return `FX_IDC:${s}`;
+    if (nyseSet.has(s)) return `NYSE:${s}`;
+    if (category === 'STOCKS') return `NASDAQ:${s}`;
     return null;
 }
 
@@ -110,7 +124,7 @@ async function prepareAllSymbols() {
                     addMap(ticker, cleanSym);
                 }
             })());
-        }
+        });
     }
 
     try {
@@ -132,7 +146,7 @@ async function prepareAllSymbols() {
 
     await Promise.all(allWork);
     activeSymbols = [...new Set(formattedSymbols)];
-    console.log(`📡 Toplam ${activeSymbols.length} sembol TradingView'den izleniyor.`);
+    console.log(`📡 Toplam ${activeSymbols.length} sembol izleniyor.`);
     return activeSymbols;
 }
 
@@ -163,10 +177,12 @@ async function startTradingViewConnection() {
                     let i = 0;
                     const batch = () => {
                         if (i >= ss.length) return;
-                        ws.send(msg('quote_add_symbols', [sid, ...ss.slice(i, i + 15)]));
-                        i += 15; setTimeout(batch, 1200);
+                        const chunk = ss.slice(i, i + 10);
+                        console.log(`📤 Abone olunuyor: ${chunk.join(', ')}`);
+                        ws.send(msg('quote_add_symbols', [sid, ...chunk]));
+                        i += 10; setTimeout(batch, 2000);
                     };
-                    setTimeout(batch, 3000);
+                    setTimeout(batch, 5000);
                 });
                 ws.addEventListener('message', (e) => window.onDataReceived(e.data));
                 return ws;
@@ -186,7 +202,8 @@ function processRawData(rawData) {
     while ((match = regex.exec(rawData)) !== null) {
         const start = match.index + match[0].length;
         try {
-            const msg = JSON.parse(rawData.substring(start, start + parseInt(match[1])));
+            const jsonStr = rawData.substring(start, start + parseInt(match[1]));
+            const msg = JSON.parse(jsonStr);
             if (msg.m === 'qsd' && msg.p && msg.p[1]) {
                 const ticker = msg.p[1].n.split(',')[0].trim().toUpperCase();
                 const values = msg.p[1].v;
