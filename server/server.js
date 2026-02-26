@@ -52,9 +52,8 @@ app.use(session({
 
 const isAuthenticated = (req, res, next) => {
     if (req.session.authenticated || req.path.startsWith('/api/auth/')) return next();
-    const publicPaths = ['/api/public-symbols', '/api/prices'];
-    if (publicPaths.some(p => req.path.startsWith(p))) return next();
-    if (req.path === '/admin/login.html' || req.path === '/login.html') return next();
+    if (req.path === '/api/public-symbols' || req.path === '/api/prices') return next();
+    if (req.path === '/admin/login.html') return next();
     res.redirect('/admin/login.html');
 };
 
@@ -106,7 +105,20 @@ async function prepareAllSymbols() {
         if (!reverseMapping[tick].includes(symb)) reverseMapping[tick].push(symb);
     };
     addMap('FX_IDC:USDTRY', 'USDTRY');
-    Object.entries(symbolMapping).forEach(([s, t]) => { formattedSymbols.push(t); addMap(t, s); });
+    Object.entries(symbolMapping).forEach(([s, t]) => {
+        const tick = t.toUpperCase().trim();
+        if (!formattedSymbols.includes(tick)) formattedSymbols.push(tick);
+        addMap(tick, s);
+    });
+
+    for (const [category, symbols] of Object.entries(symbolsData)) {
+        for (const sym of symbols) {
+            const cleanSym = sym.split('//')[0].trim().toUpperCase();
+            const ticker = quickGuessSymbol(cleanSym, category) || `BIST:${cleanSym}`;
+            if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
+            addMap(ticker, cleanSym);
+        }
+    }
 
     try {
         const config = await ConfigModel.findOne({ key: 'global' });
@@ -121,10 +133,10 @@ async function prepareAllSymbols() {
                 }
             }
         }
-    } catch (e) { console.error('DB Prepare Error:', e); }
+    } catch (e) { }
 
     activeSymbols = [...new Set(formattedSymbols)];
-    console.log(`📡 Toplam ${activeSymbols.length} sembol izleniyor.`);
+    console.log(`📡 Toplam ${activeSymbols.length} sembol TradingView üzerinden izleniyor.`);
     return activeSymbols;
 }
 
@@ -140,7 +152,6 @@ async function startTradingViewConnection() {
         ]);
         page = await context.newPage();
         await page.exposeFunction('onDataReceived', (d) => processRawData(d));
-
         const symbols = await prepareAllSymbols();
         await page.addInitScript((ss) => {
             const NativeWS = window.WebSocket;
@@ -156,16 +167,16 @@ async function startTradingViewConnection() {
                     const batch = () => {
                         if (i >= ss.length) return;
                         ws.send(msg('quote_add_symbols', [sid, ...ss.slice(i, i + 35)]));
-                        i += 35; setTimeout(batch, 1500);
+                        i += 35; setTimeout(batch, 2000);
                     };
-                    setTimeout(batch, 2000);
+                    setTimeout(batch, 4000);
                 });
                 ws.addEventListener('message', (e) => window.onDataReceived(e.data));
                 return ws;
             };
         }, symbols);
         await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
-        console.log('✅ TradingView Bağlantısı Hazır.');
+        console.log('✅ TradingView Bağlantısı Aktif.');
     } catch (e) {
         console.error('❌ Playwright Hatası:', e);
         setTimeout(startTradingViewConnection, 10000);
@@ -178,17 +189,16 @@ function processRawData(rawData) {
     let match;
     while ((match = regex.exec(rawData)) !== null) {
         const start = match.index + match[0].length;
-        const length = parseInt(match[1]);
-        const jsonStr = rawData.substring(start, start + length);
+        const jsonStr = rawData.substring(start, start + parseInt(match[1]));
         try {
             const msg = JSON.parse(jsonStr);
             if (msg.m === 'qsd' && msg.p && msg.p[1]) {
-                const data = msg.p[1], ticker = data.n, values = data.v;
+                const ticker = msg.p[1].n, values = msg.p[1].v;
                 if (!ticker || !values) continue;
                 const cleanTicker = ticker.split(',')[0].trim().toUpperCase();
                 const mapped = reverseMapping[cleanTicker] || [cleanTicker.split(':').pop().toUpperCase()];
                 mapped.forEach(sym => {
-                    const s = sym.toUpperCase().trim();
+                    const s = sym.toUpperCase();
                     if (pausedSymbols.has(s)) return;
                     let price = values.lp;
                     if (priceOverrides[s]) {
@@ -196,7 +206,7 @@ function processRawData(rawData) {
                         price = ov.type === 'fixed' ? ov.value : price * ov.value;
                     }
                     if (price) {
-                        latestPrices[s] = { price, changePercent: values.chp, currency: values.currency_code || (cleanTicker.includes('TRY') ? 'TRY' : 'USD') };
+                        latestPrices[s] = { price, changePercent: values.chp, currency: values.currency_code || 'USD' };
                         const out = JSON.stringify({ type: 'price_update', data: { symbol: s, price, changePercent: values.chp, currency: latestPrices[s].currency } });
                         if (app.locals.wss) app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(out); });
                     }
@@ -208,56 +218,34 @@ function processRawData(rawData) {
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBEw7vST9gH6@cluster0.z2s3t.mongodb.net/karisik?retryWrites=true&w=majority&appName=Cluster0')
     .then(async () => {
-        console.log('✅ MongoDB Bağlı.');
         const config = await ConfigModel.findOne({ key: 'global' });
         if (config) {
             globalDelay = config.delay || 0;
             if (config.overrides) priceOverrides = Object.fromEntries(config.overrides.entries());
             if (config.symbols) config.symbols.forEach(s => { if (s.paused) pausedSymbols.add((typeof s === 'string' ? s : s.name).toUpperCase()); });
         }
-
         const server = app.listen(PORT, () => {
             console.log(`🚀 Server ${PORT} üzerinde çalışıyor.`);
-            const wss = new WebSocketServer({
+            app.locals.wss = new WebSocketServer({
                 server,
                 verifyClient: (info, callback) => {
                     try {
                         const url = new URL(info.req.url, 'http://localhost');
-                        const token = url.searchParams.get('token');
-                        callback(token === API_SECRET);
-                    } catch (e) {
-                        callback(false);
-                    }
+                        callback(url.searchParams.get('token') === API_SECRET);
+                    } catch (e) { callback(false); }
                 }
             });
-
-            wss.on('connection', (ws) => {
-                console.log('📱 Yeni bir istemci WebSocket üzerinden bağlandı.');
-                Object.keys(latestPrices).forEach(sym => {
-                    const p = latestPrices[sym];
-                    if (p && p.price) {
-                        ws.send(JSON.stringify({
-                            type: 'price_update',
-                            data: {
-                                symbol: sym,
-                                price: p.price,
-                                changePercent: p.changePercent,
-                                currency: p.currency
-                            }
-                        }));
-                    }
-                });
-            });
-
-            app.locals.wss = wss;
             startTradingViewConnection();
+        });
+
+        app.locals.wss.on('connection', (ws) => {
+            Object.keys(latestPrices).forEach(s => {
+                const p = latestPrices[s];
+                ws.send(JSON.stringify({ type: 'price_update', data: { symbol: s, price: p.price, changePercent: p.changePercent, currency: p.currency } }));
+            });
         });
     });
 
 app.locals.addSymbolToStream = async (symbol, category) => {
-    const ticker = await resolveSymbolTicker(symbol, category);
-    if (ticker && !activeSymbols.includes(ticker)) {
-        console.log(`🆕 Yeni ticker eklendi: ${ticker} (${symbol})`);
-        startTradingViewConnection();
-    }
+    startTradingViewConnection();
 };
