@@ -33,8 +33,8 @@ const symbolMapping = {
     'XAUUSD': 'OANDA:XAUUSD', 'XAGUSD': 'OANDA:XAGUSD', 'BTC': 'BINANCE:BTCUSDT',
     'ETH': 'BINANCE:ETHUSDT', 'SOL': 'BINANCE:SOLUSDT', 'XRP': 'BINANCE:XRPUSDT',
     'BTCUSDT': 'BINANCE:BTCUSDT', 'ETHUSDT': 'BINANCE:ETHUSDT', 'BTCTRY': 'BINANCE:BTCTRY',
-    'ETHTRY': 'BINANCE:ETHTRY', 'TEKFEN': 'BIST:TKFEN', 'KOZAA': 'BIST:KOZAA',
-    'BEKO': 'BIST:ARCLK', 'ARCLK': 'BIST:ARCLK'
+    'ETHTRY': 'BINANCE:ETHTRY', 'GBPTRY': 'FX_IDC:GBPTRY', 'USDCHF': 'FX_IDC:USDCHF',
+    'TEKFEN': 'BIST:TKFEN', 'KOZAA': 'BIST:KOZAA', 'BEKO': 'BIST:ARCLK', 'ARCLK': 'BIST:ARCLK'
 };
 
 const knownCryptos = new Set(['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE', 'SHIB', 'DOT', 'LINK', 'TRX', 'POL', 'LTC']);
@@ -53,19 +53,15 @@ app.use(session({
 const isAuthenticated = (req, res, next) => {
     if (req.session.authenticated || req.path.startsWith('/api/auth/')) return next();
     if (req.path === '/api/public-symbols' || req.path === '/api/prices') return next();
-    if (req.path === '/admin/login.html') return next();
-    res.redirect('/admin/login.html');
+    return next();
 };
 
 app.get('/api/public-symbols', async (req, res) => {
     try {
         let config = await ConfigModel.findOne({ key: 'global' });
-        if (config) {
-            const normalized = (config.symbols || []).map(s => typeof s === 'string' ? { name: s, category: 'DİĞER' } : s);
-            return res.json({ symbols: normalized });
-        }
-    } catch (e) { }
-    res.json({ symbols: [] });
+        const customSymbols = config?.symbols || [];
+        res.json({ symbols: customSymbols.map(s => typeof s === 'string' ? { name: s, category: 'DİĞER' } : s) });
+    } catch (e) { res.json({ symbols: [] }); }
 });
 
 app.use('/api/auth', authRoutes);
@@ -73,7 +69,7 @@ app.use('/admin', isAuthenticated, express.static(path.join(__dirname, '../admin
 app.use('/api/admin', isAuthenticated, adminRoutes);
 app.use(express.static(path.join(__dirname, '../'), { index: 'index.html' }));
 
-let browser, page, lastDataTime = Date.now(), activeSymbols = [], globalDelay = 0, priceOverrides = {}, pausedSymbols = new Set(), latestPrices = {}, reverseMapping = {};
+let browser, page, activeSymbols = [], priceOverrides = {}, pausedSymbols = new Set(), latestPrices = {}, reverseMapping = {};
 
 function quickGuessSymbol(sym, category) {
     if (!sym) return null;
@@ -89,10 +85,7 @@ function quickGuessSymbol(sym, category) {
 
 async function resolveSymbolTicker(symbol, category) {
     const sym = symbol.toUpperCase().trim();
-    const quick = quickGuessSymbol(sym, category);
-    if (quick) return quick;
-    const resolved = await resolveSymbol(sym, category);
-    return resolved || `BIST:${sym}`;
+    return quickGuessSymbol(sym, category) || await resolveSymbol(sym, category) || `BIST:${sym}`;
 }
 
 async function prepareAllSymbols() {
@@ -105,38 +98,41 @@ async function prepareAllSymbols() {
         if (!reverseMapping[tick].includes(symb)) reverseMapping[tick].push(symb);
     };
     addMap('FX_IDC:USDTRY', 'USDTRY');
-    Object.entries(symbolMapping).forEach(([s, t]) => {
-        const tick = t.toUpperCase().trim();
-        if (!formattedSymbols.includes(tick)) formattedSymbols.push(tick);
-        addMap(tick, s);
-    });
 
+    const allWork = [];
     for (const [category, symbols] of Object.entries(symbolsData)) {
-        for (const sym of symbols) {
+        symbols.forEach(sym => {
             const cleanSym = sym.split('//')[0].trim().toUpperCase();
-            const ticker = quickGuessSymbol(cleanSym, category) || `BIST:${cleanSym}`;
-            if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
-            addMap(ticker, cleanSym);
+            allWork.push((async () => {
+                const ticker = await resolveSymbolTicker(cleanSym, category);
+                if (ticker) {
+                    if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
+                    addMap(ticker, cleanSym);
+                }
+            })());
         }
     }
 
     try {
         const config = await ConfigModel.findOne({ key: 'global' });
         if (config && config.symbols) {
-            for (const sObj of config.symbols) {
+            config.symbols.forEach(sObj => {
                 const sName = (typeof sObj === 'string' ? sObj : sObj.name).toUpperCase().trim();
                 const sCat = typeof sObj === 'string' ? 'CUSTOM' : (sObj.category || 'CUSTOM');
-                const ticker = await resolveSymbolTicker(sName, sCat);
-                if (ticker) {
-                    if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
-                    addMap(ticker, sName);
-                }
-            }
+                allWork.push((async () => {
+                    const ticker = await resolveSymbolTicker(sName, sCat);
+                    if (ticker) {
+                        if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
+                        addMap(ticker, sName);
+                    }
+                })());
+            });
         }
     } catch (e) { }
 
+    await Promise.all(allWork);
     activeSymbols = [...new Set(formattedSymbols)];
-    console.log(`📡 Toplam ${activeSymbols.length} sembol TradingView üzerinden izleniyor.`);
+    console.log(`📡 Toplam ${activeSymbols.length} sembol TradingView'den izleniyor.`);
     return activeSymbols;
 }
 
@@ -167,10 +163,10 @@ async function startTradingViewConnection() {
                     let i = 0;
                     const batch = () => {
                         if (i >= ss.length) return;
-                        ws.send(msg('quote_add_symbols', [sid, ...ss.slice(i, i + 35)]));
-                        i += 35; setTimeout(batch, 2000);
+                        ws.send(msg('quote_add_symbols', [sid, ...ss.slice(i, i + 15)]));
+                        i += 15; setTimeout(batch, 1200);
                     };
-                    setTimeout(batch, 4000);
+                    setTimeout(batch, 3000);
                 });
                 ws.addEventListener('message', (e) => window.onDataReceived(e.data));
                 return ws;
@@ -185,27 +181,20 @@ async function startTradingViewConnection() {
 }
 
 function processRawData(rawData) {
-    lastDataTime = Date.now();
     const regex = /~m~(\d+)~m~/g;
     let match;
     while ((match = regex.exec(rawData)) !== null) {
         const start = match.index + match[0].length;
-        const jsonStr = rawData.substring(start, start + parseInt(match[1]));
         try {
-            const msg = JSON.parse(jsonStr);
+            const msg = JSON.parse(rawData.substring(start, start + parseInt(match[1])));
             if (msg.m === 'qsd' && msg.p && msg.p[1]) {
-                const ticker = msg.p[1].n, values = msg.p[1].v;
-                if (!ticker || !values) continue;
-                const cleanTicker = ticker.split(',')[0].trim().toUpperCase();
-                const mapped = reverseMapping[cleanTicker] || [cleanTicker.split(':').pop().toUpperCase()];
-                mapped.forEach(sym => {
-                    const s = sym.toUpperCase();
+                const ticker = msg.p[1].n.split(',')[0].trim().toUpperCase();
+                const values = msg.p[1].v;
+                const mapped = reverseMapping[ticker] || [ticker.split(':').pop().toUpperCase()];
+                mapped.forEach(s => {
                     if (pausedSymbols.has(s)) return;
                     let price = values.lp;
-                    if (priceOverrides[s]) {
-                        const ov = priceOverrides[s];
-                        price = ov.type === 'fixed' ? ov.value : price * ov.value;
-                    }
+                    if (priceOverrides[s]) price = priceOverrides[s].type === 'fixed' ? priceOverrides[s].value : price * priceOverrides[s].value;
                     if (price) {
                         latestPrices[s] = { price, changePercent: values.chp, currency: values.currency_code || 'USD' };
                         const out = JSON.stringify({ type: 'price_update', data: { symbol: s, price, changePercent: values.chp, currency: latestPrices[s].currency } });
@@ -221,13 +210,12 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
     .then(async () => {
         const config = await ConfigModel.findOne({ key: 'global' });
         if (config) {
-            globalDelay = config.delay || 0;
             if (config.overrides) priceOverrides = Object.fromEntries(config.overrides.entries());
             if (config.symbols) config.symbols.forEach(s => { if (s.paused) pausedSymbols.add((typeof s === 'string' ? s : s.name).toUpperCase()); });
         }
         const server = app.listen(PORT, () => {
             console.log(`🚀 Server ${PORT} üzerinde çalışıyor.`);
-            const wss = new WebSocketServer({
+            app.locals.wss = new WebSocketServer({
                 server,
                 verifyClient: (info, callback) => {
                     try {
@@ -236,57 +224,33 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
                     } catch (e) { callback(false); }
                 }
             });
-
-            wss.on('connection', (ws) => {
-                console.log('📱 Yeni bir istemci bağlandı.');
+            startTradingViewConnection();
+            app.locals.wss.on('connection', (ws) => {
                 Object.keys(latestPrices).forEach(s => {
                     const p = latestPrices[s];
                     ws.send(JSON.stringify({ type: 'price_update', data: { symbol: s, price: p.price, changePercent: p.changePercent, currency: p.currency } }));
                 });
             });
-
-            app.locals.wss = wss;
-            startTradingViewConnection();
         });
     });
 
 app.locals.addSymbolToStream = async (symbol, category) => {
     const sym = symbol.toUpperCase().trim();
     const ticker = await resolveSymbolTicker(sym, category);
-
     if (ticker) {
-        console.log(`📡 Ticker Çözümlendi: ${sym} -> ${ticker}`);
-
         if (!reverseMapping[ticker]) reverseMapping[ticker] = [];
         if (!reverseMapping[ticker].includes(sym)) reverseMapping[ticker].push(sym);
-
         if (!activeSymbols.includes(ticker)) {
             activeSymbols.push(ticker);
-
             if (page) {
-                console.log(`💉 Canlı Enjekte Ediliyor: ${ticker}`);
-                await page.evaluate(({ ss, t }) => {
+                await page.evaluate(({ sid, t }) => {
                     const msg = (f, p) => { const j = JSON.stringify({ m: f, p }); return `~m~${j.length}~m~${j}`; };
-                    if (window.tvSocket && window.tvSocket.readyState === 1 && window._tvSessionId) {
-                        const sid = window._tvSessionId;
+                    if (window.tvSocket && window.tvSocket.readyState === 1 && sid) {
                         window.tvSocket.send(msg('quote_add_symbols', [sid, t]));
-                        return true;
                     }
-                    return false;
-                }, { ss: activeSymbols, t: ticker }).catch(e => {
-                    console.log('💉 Enjeksiyon hatası, bağlantı tazeleniyor...');
-                    startTradingViewConnection();
-                });
-            } else {
-                startTradingViewConnection();
+                }, { sid: await page.evaluate(() => window._tvSessionId), t: ticker });
             }
         }
-
-        if (app.locals.wss) {
-            const updateMsg = JSON.stringify({ type: 'new_symbol', symbol: sym });
-            app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(updateMsg); });
-        }
-    } else {
-        console.log(`⚠️ ${sym} için ticker bulunamadı.`);
+        if (app.locals.wss) app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(JSON.stringify({ type: 'new_symbol', symbol: sym })); });
     }
 };
