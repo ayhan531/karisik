@@ -51,8 +51,10 @@ app.use(session({
 }));
 
 const isAuthenticated = (req, res, next) => {
-    if (req.session.authenticated || req.path.startsWith('/auth/')) return next();
-    if (req.originalUrl.startsWith('/api/public-symbols')) return next();
+    if (req.session.authenticated || req.path.startsWith('/api/auth/')) return next();
+    const publicPaths = ['/api/public-symbols', '/api/prices'];
+    if (publicPaths.some(p => req.path.startsWith(p))) return next();
+    if (req.path === '/admin/login.html' || req.path === '/login.html') return next();
     res.redirect('/admin/login.html');
 };
 
@@ -88,69 +90,86 @@ function quickGuessSymbol(sym, category) {
 
 async function resolveSymbolTicker(symbol, category) {
     const sym = symbol.toUpperCase().trim();
-    return quickGuessSymbol(sym, category) || await resolveSymbol(sym, category) || `BIST:${sym}`;
+    const quick = quickGuessSymbol(sym, category);
+    if (quick) return quick;
+    const resolved = await resolveSymbol(sym, category);
+    return resolved || `BIST:${sym}`;
 }
 
 async function prepareAllSymbols() {
     const formattedSymbols = ['FX_IDC:USDTRY'];
     Object.keys(reverseMapping).forEach(k => delete reverseMapping[k]);
     const addMap = (t, s) => {
-        if (!reverseMapping[t]) reverseMapping[t] = [];
-        if (!reverseMapping[t].includes(s)) reverseMapping[t].push(s);
+        const tick = t.toUpperCase().trim();
+        const symb = s.toUpperCase().trim();
+        if (!reverseMapping[tick]) reverseMapping[tick] = [];
+        if (!reverseMapping[tick].includes(symb)) reverseMapping[tick].push(symb);
     };
     addMap('FX_IDC:USDTRY', 'USDTRY');
     Object.entries(symbolMapping).forEach(([s, t]) => { formattedSymbols.push(t); addMap(t, s); });
 
-    const config = await ConfigModel.findOne({ key: 'global' });
-    if (config && config.symbols) {
-        for (const sObj of config.symbols) {
-            const sName = (typeof sObj === 'string' ? sObj : sObj.name).toUpperCase().trim();
-            const sCat = typeof sObj === 'string' ? 'CUSTOM' : (sObj.category || 'CUSTOM');
-            const ticker = await resolveSymbolTicker(sName, sCat);
-            if (ticker) {
-                if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
-                addMap(ticker, sName);
+    try {
+        const config = await ConfigModel.findOne({ key: 'global' });
+        if (config && config.symbols) {
+            for (const sObj of config.symbols) {
+                const sName = (typeof sObj === 'string' ? sObj : sObj.name).toUpperCase().trim();
+                const sCat = typeof sObj === 'string' ? 'CUSTOM' : (sObj.category || 'CUSTOM');
+                const ticker = await resolveSymbolTicker(sName, sCat);
+                if (ticker) {
+                    if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
+                    addMap(ticker, sName);
+                }
             }
         }
-    }
+    } catch (e) { console.error('DB Prepare Error:', e); }
+
     activeSymbols = [...new Set(formattedSymbols)];
+    console.log(`📡 Toplam ${activeSymbols.length} sembol izleniyor.`);
     return activeSymbols;
 }
 
 async function startTradingViewConnection() {
+    console.log('🔌 TradingView Bağlantısı Başlatılıyor...');
     if (browser) try { await browser.close(); } catch (e) { }
-    browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-    const context = await browser.newContext();
-    await context.addCookies([
-        { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
-        { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' }
-    ]);
-    page = await context.newPage();
-    await page.exposeFunction('onDataReceived', (d) => processRawData(d));
-    const symbols = await prepareAllSymbols();
-    await page.addInitScript((ss) => {
-        const NativeWS = window.WebSocket;
-        window.WebSocket = function (url, protocols) {
-            const ws = new NativeWS(url, protocols);
-            window.tvSocket = ws;
-            ws.addEventListener('open', () => {
-                const msg = (f, p) => { const j = JSON.stringify({ m: f, p }); return `~m~${j.length}~m~${j}`; };
-                const sid = 'qs_' + Math.random().toString(36).substring(7);
-                ws.send(msg('quote_create_session', [sid]));
-                ws.send(msg('quote_set_fields', [sid, 'lp', 'ch', 'chp', 'status', 'currency_code']));
-                let i = 0;
-                const batch = () => {
-                    if (i >= ss.length) return;
-                    ws.send(msg('quote_add_symbols', [sid, ...ss.slice(i, i + 35)]));
-                    i += 35; setTimeout(batch, 1500);
-                };
-                setTimeout(batch, 2000);
-            });
-            ws.addEventListener('message', (e) => window.onDataReceived(e.data));
-            return ws;
-        };
-    }, symbols);
-    await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
+    try {
+        browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+        const context = await browser.newContext();
+        await context.addCookies([
+            { name: 'sessionid', value: 'owdl1knxegxizb3jz4jub973l3jf8r5h', domain: '.tradingview.com', path: '/' },
+            { name: 'sessionid_sign', value: 'v3:vTg6tTsF73zJMZdotbHAjbi4gIaUtfLj8zpEbrnhJHQ=', domain: '.tradingview.com', path: '/' }
+        ]);
+        page = await context.newPage();
+        await page.exposeFunction('onDataReceived', (d) => processRawData(d));
+
+        const symbols = await prepareAllSymbols();
+        await page.addInitScript((ss) => {
+            const NativeWS = window.WebSocket;
+            window.WebSocket = function (url, protocols) {
+                const ws = new NativeWS(url, protocols);
+                window.tvSocket = ws;
+                ws.addEventListener('open', () => {
+                    const msg = (f, p) => { const j = JSON.stringify({ m: f, p }); return `~m~${j.length}~m~${j}`; };
+                    const sid = 'qs_' + Math.random().toString(36).substring(7);
+                    ws.send(msg('quote_create_session', [sid]));
+                    ws.send(msg('quote_set_fields', [sid, 'lp', 'ch', 'chp', 'status', 'currency_code']));
+                    let i = 0;
+                    const batch = () => {
+                        if (i >= ss.length) return;
+                        ws.send(msg('quote_add_symbols', [sid, ...ss.slice(i, i + 35)]));
+                        i += 35; setTimeout(batch, 1500);
+                    };
+                    setTimeout(batch, 2000);
+                });
+                ws.addEventListener('message', (e) => window.onDataReceived(e.data));
+                return ws;
+            };
+        }, symbols);
+        await page.goto('https://tr.tradingview.com/chart/', { timeout: 60000 });
+        console.log('✅ TradingView Bağlantısı Hazır.');
+    } catch (e) {
+        console.error('❌ Playwright Hatası:', e);
+        setTimeout(startTradingViewConnection, 10000);
+    }
 }
 
 function processRawData(rawData) {
@@ -159,22 +178,28 @@ function processRawData(rawData) {
     let match;
     while ((match = regex.exec(rawData)) !== null) {
         const start = match.index + match[0].length;
-        const jsonStr = rawData.substring(start, start + parseInt(match[1]));
+        const length = parseInt(match[1]);
+        const jsonStr = rawData.substring(start, start + length);
         try {
             const msg = JSON.parse(jsonStr);
             if (msg.m === 'qsd' && msg.p && msg.p[1]) {
                 const data = msg.p[1], ticker = data.n, values = data.v;
                 if (!ticker || !values) continue;
-                const cleanTicker = ticker.split(',')[0].trim();
+                const cleanTicker = ticker.split(',')[0].trim().toUpperCase();
                 const mapped = reverseMapping[cleanTicker] || [cleanTicker.split(':').pop().toUpperCase()];
                 mapped.forEach(sym => {
                     const s = sym.toUpperCase().trim();
                     if (pausedSymbols.has(s)) return;
                     let price = values.lp;
-                    if (priceOverrides[s]) price = priceOverrides[s].type === 'fixed' ? priceOverrides[s].value : price * priceOverrides[s].value;
-                    latestPrices[s] = { price, changePercent: values.chp, currency: values.currency_code || 'USD' };
-                    const out = JSON.stringify({ type: 'price_update', data: { symbol: s, price, changePercent: values.chp } });
-                    if (app.locals.wss) app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(out); });
+                    if (priceOverrides[s]) {
+                        const ov = priceOverrides[s];
+                        price = ov.type === 'fixed' ? ov.value : price * ov.value;
+                    }
+                    if (price) {
+                        latestPrices[s] = { price, changePercent: values.chp, currency: values.currency_code || (cleanTicker.includes('TRY') ? 'TRY' : 'USD') };
+                        const out = JSON.stringify({ type: 'price_update', data: { symbol: s, price, changePercent: values.chp, currency: latestPrices[s].currency } });
+                        if (app.locals.wss) app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(out); });
+                    }
                 });
             }
         } catch (e) { }
@@ -182,9 +207,24 @@ function processRawData(rawData) {
 }
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBEw7vST9gH6@cluster0.z2s3t.mongodb.net/karisik?retryWrites=true&w=majority&appName=Cluster0')
-    .then(() => {
+    .then(async () => {
+        console.log('✅ MongoDB Bağlı.');
+        const config = await ConfigModel.findOne({ key: 'global' });
+        if (config) {
+            globalDelay = config.delay || 0;
+            if (config.overrides) priceOverrides = Object.fromEntries(config.overrides.entries());
+            if (config.symbols) config.symbols.forEach(s => { if (s.paused) pausedSymbols.add((typeof s === 'string' ? s : s.name).toUpperCase()); });
+        }
+
         const server = app.listen(PORT, () => {
-            app.locals.wss = new WebSocketServer({ server });
+            console.log(`🚀 Server ${PORT} üzerinde çalışıyor.`);
+            app.locals.wss = new WebSocketServer({
+                server,
+                verifyClient: (info, callback) => {
+                    const url = new URL(info.req.url, `http://${info.req.headers.host}`);
+                    callback(url.searchParams.get('token') === API_SECRET);
+                }
+            });
             startTradingViewConnection();
         });
     });
@@ -192,9 +232,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
 app.locals.addSymbolToStream = async (symbol, category) => {
     const ticker = await resolveSymbolTicker(symbol, category);
     if (ticker && !activeSymbols.includes(ticker)) {
-        activeSymbols.push(ticker);
-        if (!reverseMapping[ticker]) reverseMapping[ticker] = [];
-        reverseMapping[ticker].push(symbol.toUpperCase());
+        console.log(`🆕 Yeni ticker eklendi: ${ticker} (${symbol})`);
         startTradingViewConnection();
     }
 };
