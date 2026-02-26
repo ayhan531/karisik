@@ -161,6 +161,7 @@ async function startTradingViewConnection() {
                 ws.addEventListener('open', () => {
                     const msg = (f, p) => { const j = JSON.stringify({ m: f, p }); return `~m~${j.length}~m~${j}`; };
                     const sid = 'qs_' + Math.random().toString(36).substring(7);
+                    window._tvSessionId = sid;
                     ws.send(msg('quote_create_session', [sid]));
                     ws.send(msg('quote_set_fields', [sid, 'lp', 'ch', 'chp', 'status', 'currency_code']));
                     let i = 0;
@@ -247,5 +248,42 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
     });
 
 app.locals.addSymbolToStream = async (symbol, category) => {
-    startTradingViewConnection();
+    const sym = symbol.toUpperCase().trim();
+    const ticker = await resolveSymbolTicker(sym, category);
+
+    if (ticker) {
+        console.log(`📡 Ticker Çözümlendi: ${sym} -> ${ticker}`);
+
+        if (!reverseMapping[ticker]) reverseMapping[ticker] = [];
+        if (!reverseMapping[ticker].includes(sym)) reverseMapping[ticker].push(sym);
+
+        if (!activeSymbols.includes(ticker)) {
+            activeSymbols.push(ticker);
+
+            if (page) {
+                console.log(`💉 Canlı Enjekte Ediliyor: ${ticker}`);
+                await page.evaluate(({ ss, t }) => {
+                    const msg = (f, p) => { const j = JSON.stringify({ m: f, p }); return `~m~${j.length}~m~${j}`; };
+                    if (window.tvSocket && window.tvSocket.readyState === 1 && window._tvSessionId) {
+                        const sid = window._tvSessionId;
+                        window.tvSocket.send(msg('quote_add_symbols', [sid, t]));
+                        return true;
+                    }
+                    return false;
+                }, { ss: activeSymbols, t: ticker }).catch(e => {
+                    console.log('💉 Enjeksiyon hatası, bağlantı tazeleniyor...');
+                    startTradingViewConnection();
+                });
+            } else {
+                startTradingViewConnection();
+            }
+        }
+
+        if (app.locals.wss) {
+            const updateMsg = JSON.stringify({ type: 'new_symbol', symbol: sym });
+            app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(updateMsg); });
+        }
+    } else {
+        console.log(`⚠️ ${sym} için ticker bulunamadı.`);
+    }
 };

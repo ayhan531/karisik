@@ -80,6 +80,9 @@ class TradingApp {
                 const message = JSON.parse(event.data);
                 if (message.type === 'price_update') {
                     this.handlePriceUpdate(message.data);
+                } else if (message.type === 'new_symbol') {
+                    console.log('🆕 Yeni sembol algılandı, liste güncelleniyor...');
+                    this.fetchCustomSymbols();
                 }
             } catch (err) {
                 console.error('Mesaj parse hatası:', err);
