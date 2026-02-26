@@ -227,7 +227,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
         }
         const server = app.listen(PORT, () => {
             console.log(`🚀 Server ${PORT} üzerinde çalışıyor.`);
-            app.locals.wss = new WebSocketServer({
+            const wss = new WebSocketServer({
                 server,
                 verifyClient: (info, callback) => {
                     try {
@@ -236,14 +236,17 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
                     } catch (e) { callback(false); }
                 }
             });
-            startTradingViewConnection();
-        });
 
-        app.locals.wss.on('connection', (ws) => {
-            Object.keys(latestPrices).forEach(s => {
-                const p = latestPrices[s];
-                ws.send(JSON.stringify({ type: 'price_update', data: { symbol: s, price: p.price, changePercent: p.changePercent, currency: p.currency } }));
+            wss.on('connection', (ws) => {
+                console.log('📱 Yeni bir istemci bağlandı.');
+                Object.keys(latestPrices).forEach(s => {
+                    const p = latestPrices[s];
+                    ws.send(JSON.stringify({ type: 'price_update', data: { symbol: s, price: p.price, changePercent: p.changePercent, currency: p.currency } }));
+                });
             });
+
+            app.locals.wss = wss;
+            startTradingViewConnection();
         });
     });
 
