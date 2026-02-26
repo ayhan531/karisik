@@ -218,13 +218,38 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
 
         const server = app.listen(PORT, () => {
             console.log(`🚀 Server ${PORT} üzerinde çalışıyor.`);
-            app.locals.wss = new WebSocketServer({
+            const wss = new WebSocketServer({
                 server,
                 verifyClient: (info, callback) => {
-                    const url = new URL(info.req.url, `http://${info.req.headers.host}`);
-                    callback(url.searchParams.get('token') === API_SECRET);
+                    try {
+                        const url = new URL(info.req.url, 'http://localhost');
+                        const token = url.searchParams.get('token');
+                        callback(token === API_SECRET);
+                    } catch (e) {
+                        callback(false);
+                    }
                 }
             });
+
+            wss.on('connection', (ws) => {
+                console.log('📱 Yeni bir istemci WebSocket üzerinden bağlandı.');
+                Object.keys(latestPrices).forEach(sym => {
+                    const p = latestPrices[sym];
+                    if (p && p.price) {
+                        ws.send(JSON.stringify({
+                            type: 'price_update',
+                            data: {
+                                symbol: sym,
+                                price: p.price,
+                                changePercent: p.changePercent,
+                                currency: p.currency
+                            }
+                        }));
+                    }
+                });
+            });
+
+            app.locals.wss = wss;
             startTradingViewConnection();
         });
     });
