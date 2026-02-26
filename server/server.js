@@ -205,9 +205,6 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
         activeSymbols.push(ticker);
     }
 
-    // Reverse mapping'de asıl girilen ismi (XRPUSD vs) de tutalım ki socket'ten geri basarken bulabilsin.
-    addMapping(ticker, symbol);
-
     // Mevcut WS oturumuna inject etmeyi dene; başarısız olursa reconnect yap
     if (page) {
         page.evaluate(({ tvTicker, allSymbols }) => {
