@@ -4,7 +4,6 @@ import { clearCache, listCache, manuallySetTicker } from '../symbolResolver.js';
 
 const router = express.Router();
 
-// Yardımcı Fonksiyonlar (MongoDB)
 const getConfig = async () => {
     let config = await ConfigModel.findOne({ key: 'global' });
     if (!config) {
@@ -16,7 +15,7 @@ const getConfig = async () => {
         });
         await config.save();
     }
-    // Mongoose belgesini düz objeye çevir
+
     const obj = config.toObject();
     if (obj.overrides && obj.overrides instanceof Map) {
         obj.overrides = Object.fromEntries(obj.overrides);
@@ -32,16 +31,13 @@ const saveConfig = async (newConfigData) => {
     );
 };
 
-// 1. Mevcut Ayarları ve Aktif Sembolleri Getir
 router.get('/config', async (req, res) => {
     const config = await getConfig();
 
-    // Admin'in el ile eklediği semboller (Veritabanından)
     const customSymbolNames = new Set(
         config.symbols.map(s => (typeof s === 'string' ? s : s.name))
     );
 
-    // Özel sembolleri obje formatında hazırla
     const customSymbols = config.symbols.map(s => {
         if (typeof s === 'string') {
             return { name: s.split(':').pop(), category: 'DİĞER', isCustom: true, paused: false };
@@ -49,13 +45,12 @@ router.get('/config', async (req, res) => {
         return { name: s.name, category: s.category || 'DİĞER', isCustom: true, paused: s.paused || false };
     });
 
-    // Server'daki tüm aktif sembolleri al (symbols.js'den gelenler)
     let systemSymbols = [];
     if (req.app.locals.getSymbolsData) {
         const symbolsData = req.app.locals.getSymbolsData();
         Object.entries(symbolsData).forEach(([category, syms]) => {
             syms.forEach(name => {
-                const cleanName = name.replace(/\s*\/\/.*/, '').trim(); // yorum satırlarını temizle
+                const cleanName = name.replace(/\s*\/\/.*/, '').trim();
                 if (!customSymbolNames.has(cleanName)) {
                     systemSymbols.push({ name: cleanName, category, isCustom: false, paused: false });
                 }
@@ -63,7 +58,6 @@ router.get('/config', async (req, res) => {
         });
     }
 
-    // Hepsini birleştir: önce sistem, sonra özel
     const allSymbols = [...systemSymbols, ...customSymbols];
 
     res.json({
@@ -73,14 +67,12 @@ router.get('/config', async (req, res) => {
     });
 });
 
-// 2. Yeni Sembol Ekle
 router.post('/symbol', async (req, res) => {
     const { symbol, category } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
 
     const config = await getConfig();
 
-    // Var mı kontrol et
     const exists = (config.symbols || []).some(s => {
         const sName = typeof s === 'string' ? s : s.name;
         return sName === symbol;
@@ -91,7 +83,6 @@ router.post('/symbol', async (req, res) => {
         config.symbols.push({ name: symbol, category: category || 'DİĞER', isCustom: true });
         await saveConfig(config);
 
-        // Server'a sinyal gönder
         if (req.app.locals.addSymbolToStream) {
             req.app.locals.addSymbolToStream(symbol, category);
         }
@@ -99,14 +90,12 @@ router.post('/symbol', async (req, res) => {
     res.json({ success: true, symbols: config.symbols });
 });
 
-// 3. Fiyat/Çarpan Override Et
 router.post('/override', async (req, res) => {
     const { symbol, price, multiplier } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
 
     const config = await getConfig();
 
-    // Eğer price veya multiplier yoksa, override'ı kaldır (Reset)
     if (price === undefined && multiplier === undefined) {
         if (config.overrides) delete config.overrides[symbol];
     } else {
@@ -125,37 +114,34 @@ router.post('/override', async (req, res) => {
     }
 
     await saveConfig(config);
-    // Server'a sinyal gönder: Anlık override değişti
+
     if (req.app.locals.updateOverrides) {
         req.app.locals.updateOverrides(config.overrides);
     }
     res.json({ success: true, overrides: config.overrides });
 });
 
-// 4. Gecikme (Delay) Ayarla
 router.post('/delay', async (req, res) => {
     const { delay } = req.body;
     const config = await getConfig();
     config.delay = parseInt(delay) || 0;
     await saveConfig(config);
 
-    // Server'a sinyal gönder
     if (req.app.locals.updateDelay) {
         req.app.locals.updateDelay(config.delay);
     }
     res.json({ success: true, delay: config.delay });
 });
 
-// 5. Sembol Sil
 router.delete('/symbol/:symbol', async (req, res) => {
     const { symbol } = req.params;
     const config = await getConfig();
 
     const initialLength = (config.symbols || []).length;
-    // Nesne yapısına göre filtrele
+
     config.symbols = (config.symbols || []).filter(s => {
         const sName = typeof s === 'string' ? s : s.name;
-        // Hem tam adı hem de temizlenmiş halini kontrol et
+
         return sName !== symbol && sName.split(':').pop() !== symbol;
     });
 
@@ -171,7 +157,6 @@ router.delete('/symbol/:symbol', async (req, res) => {
     res.json({ success: true, symbols: config.symbols });
 });
 
-// 6. Toplu Sembol Sil
 router.post('/symbols/bulk-delete', async (req, res) => {
     const { symbols } = req.body;
     if (!Array.isArray(symbols) || symbols.length === 0) {
@@ -201,7 +186,6 @@ router.post('/symbols/bulk-delete', async (req, res) => {
     res.json({ success: true, symbols: config.symbols });
 });
 
-// 7. Toplu Override (Fiyat/Çarpan) Ekle
 router.post('/symbols/bulk-override', async (req, res) => {
     const { symbols, price, multiplier } = req.body;
     if (!Array.isArray(symbols) || symbols.length === 0) {
@@ -235,7 +219,6 @@ router.post('/symbols/bulk-override', async (req, res) => {
     res.json({ success: true, overrides: config.overrides });
 });
 
-// 8. Sembol Kategori Güncelle (Mağaza Değiştirme)
 router.post('/symbol/category', async (req, res) => {
     const { symbol, category } = req.body;
     if (!symbol || !category) return res.status(400).json({ error: 'Eksik veri' });
@@ -261,7 +244,6 @@ router.post('/symbol/category', async (req, res) => {
 
     await saveConfig(config);
 
-    // Sembolün TradingView ticker formatı değişme ihtimaline karşı akıştan koparıp yeni kategoriyle ekliyoruz
     if (req.app.locals.removeSymbolFromStream) {
         req.app.locals.removeSymbolFromStream(symbol);
     }
@@ -272,7 +254,6 @@ router.post('/symbol/category', async (req, res) => {
     res.json({ success: true, symbols: config.symbols });
 });
 
-// 9. Sembol Duraklat/Devam Et (Pause/Resume)
 router.post('/symbol/pause', async (req, res) => {
     const { symbol, paused } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Sembol gerekli' });
@@ -310,9 +291,8 @@ router.post('/symbol/pause', async (req, res) => {
     res.json({ success: true, paused: paused });
 });
 
-// 10. Kategori Ekle/Sil
 router.post('/categories', async (req, res) => {
-    const { action, category } = req.body; // action: 'add' or 'delete'
+    const { action, category } = req.body;
     if (!category) return res.status(400).json({ error: 'Kategori adı gerekli' });
 
     const config = await getConfig();
@@ -330,9 +310,6 @@ router.post('/categories', async (req, res) => {
     res.json({ success: true, categories: config.categories });
 });
 
-// 11. Ticker Cache Yönetimi
-
-// Tüm cache içeriğini listele
 router.get('/ticker-cache', async (req, res) => {
     try {
         const cache = await listCache();
@@ -342,13 +319,12 @@ router.get('/ticker-cache', async (req, res) => {
     }
 });
 
-// Belirli sembol için ticker'ı manuel set et
 router.post('/ticker-cache/set', async (req, res) => {
     const { symbol, ticker } = req.body;
     if (!symbol || !ticker) return res.status(400).json({ error: 'symbol ve ticker gerekli' });
     try {
         await manuallySetTicker(symbol, ticker);
-        // Yeni ticker ile stream'e ekle
+
         if (req.app.locals.addSymbolToStream) {
             req.app.locals.addSymbolToStream(symbol);
         }
@@ -358,7 +334,6 @@ router.post('/ticker-cache/set', async (req, res) => {
     }
 });
 
-// Cache temizle (sembol bazlı veya tümü)
 router.delete('/ticker-cache', async (req, res) => {
     const { symbol } = req.query;
     try {

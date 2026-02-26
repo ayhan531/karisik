@@ -3,36 +3,36 @@ export const symbolsData = {
     "THYAO", "ASELS", "EREGL", "SISE", "AKBNK", "YKBNK", "GARAN", "KCHOL", "SAHOL", "TUPRS", "BIMAS", "ISCTR", "PETKM", "KOZAL", "KRDMD", "HEKTS", "SASA", "KONTR", "EUPWR", "ASTOR", "GESAN", "SMART", "ODAS", "TCELL", "TTKOM", "ENKAI", "FROTO", "TOASO", "OTKAR", "VESTL", "ARCLK", "TAVHL", "PGSUS", "ULKER", "MGROS", "SOKM", "AEFES", "CCOLA", "AGHOL", "DOHOL", "TEKFEN", "ALARK", "GUBRF", "KOZAA", "IPEKE", "MAVI", "YATAS", "VAKBN", "HALKB", "TSKB", "SKBNK", "ISMEN", "ISGYO", "EKGYO", "TRGYO", "AKSEN", "ZOREN", "AYDEM", "GWIND", "CANTE", "SMRTG", "ALFAS", "MIATK", "YEOTK", "PENTA", "LOGO", "NETAS", "KAREL", "INDES", "DGATE", "DESPC", "LINK", "FONET", "KFEIN", "ARDYZ", "VBTYZ", "SDTTR", "ONCSM", "CVKMD", "KOPOL", "EGEEN", "BRYAT", "BFREN", "KONYA", "KARTN", "GOLTS", "CIMSA", "AKCNS", "BUCIM", "NUHCM", "CMBTN", "BSOKE", "BTCIM", "AFYON", "KUTPO", "KLKIM", "DMSAS", "CEMTS", "PARSN", "DITAS", "JANTS", "KATMR", "TUKAS", "TATGD", "PNSUT", "PETUN", "BANVT", "KNFRT", "KLMSN", "ALCAR", "DURDO", "GOODY", "BRISA", "LIDER", "HLGYO", "OZKGY", "RYGYO", "PAGYO", "ISFIN", "SELEC", "DEVA", "GENIL", "TRILC", "MEDTR", "LKMNH", "MPARK", "GLYHO", "VERUS", "VERTU", "INVEO", "HEDEF", "GSDHO", "METRO", "IHLAS", "IEYHO", "IHGZT", "IHAAS", "ZEDUR", "HUNER", "BIOEN", "CONSE", "ESEN", "NATEN", "MAGEN", "KARYE", "AYEN", "AKENR"
   ],
   "ENDEKSLER": [
-    "XU100",  // BIST 100
-    "XU030",  // BIST 30
-    "XBANK",  // BIST BANKA
-    "XSINA",  // BIST SINAI
-    "NDX",    // NASDAQ 100 
-    "SPX",    // S&P 500
-    "DJI",    // DOW JONES
-    "DAX",    // GERMANY 30
-    "UKX",    // FTSE 100
-    "CAC40",  // FRANCE 40
-    "NI225",  // NIKKEI 225
-    "SZSE",   // SHENZHEN
-    "HSI"     // HANG SENG
+    "XU100",
+    "XU030",
+    "XBANK",
+    "XSINA",
+    "NDX",
+    "SPX",
+    "DJI",
+    "DAX",
+    "UKX",
+    "CAC40",
+    "NI225",
+    "SZSE",
+    "HSI"
   ],
   "EMTIA": [
-    "XAUTRY", // ONS ALTIN (TL) - Yeni
-    "XAGTRY", // ONS GUMUS (TL) - Yeni
-    "GLDGR",  // GRAM ALTIN (Zaten TL)
-    "BRENT",  // BRENT PETROL (Global USD Kalmalı)
-    "USOIL",  // WTI PETROL (Global USD Kalmalı)
-    "NG1!",   // DOGALGAZ
-    "COPPER", // BAKIR
+    "XAUTRY",
+    "XAGTRY",
+    "GLDGR",
+    "BRENT",
+    "USOIL",
+    "NG1!",
+    "COPPER",
     "PLATINUM",
     "PALLADIUM",
-    "CORN",   // MISIR
-    "WHEAT",  // BUGDAY
-    "SOYBEAN",// SOYA
-    "SUGAR",  // SEKER
-    "COFFEE", // KAHVE
-    "COTTON"  // PAMUK
+    "CORN",
+    "WHEAT",
+    "SOYBEAN",
+    "SUGAR",
+    "COFFEE",
+    "COTTON"
   ],
   "EXCHANGE": [
     "USDTRY", "EURTRY", "GBPTRY", "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "CADJPY", "CHFJPY", "EURAUD", "EURCAD", "EURCHF", "GBPAUD", "GBPCAD", "AUDCAD", "AUDCHF", "NZDJPY", "AUDNZD", "XAUUSD", "XAGUSD"

@@ -25,19 +25,17 @@ class TradingApp {
             const res = await fetch('/api/public-symbols');
             const data = await res.json();
             if (data.symbols && data.symbols.length > 0) {
-                // Mevcut symbolsData'nın kopyasını al
+
                 let updatedSymbols = JSON.parse(JSON.stringify(symbolsData));
 
                 data.symbols.forEach(sObj => {
                     const cleanName = this.getCleanName(sObj.name);
                     const category = sObj.category || 'DİĞER';
 
-                    // Kategori yoksa oluştur
                     if (!updatedSymbols[category]) {
                         updatedSymbols[category] = [];
                     }
 
-                    // Eğer sembol o kategoride zaten yoksa ekle
                     if (!updatedSymbols[category].includes(cleanName)) {
                         updatedSymbols[category].push(cleanName);
                     }
@@ -54,7 +52,7 @@ class TradingApp {
     }
 
     getCleanName(sym) {
-        // server.js'deki reverseMapping mantığı ile uyumlu olmalı
+
         const specialMappings = {
             'BIST:XUSIN': 'XSINA',
             'TVC:UKOIL': 'BRENT',
@@ -69,14 +67,12 @@ class TradingApp {
         return sym.split(':').pop().replace('USDT', '');
     }
 
-    // TradingView Proxy'e WebSocket bağlantısı
     connectToProxy() {
         console.log('🔌 Proxy sunucusuna bağlanılıyor...');
 
-        // Production/Development dynamic URL
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        const wsUrl = `${protocol}//${host}?token=EsMenkul_Secret_2026`;
+        const wsUrl = `${protocol}
 
         console.log(`📡 WebSocket Adresi: ${wsUrl}`);
         this.ws = new WebSocket(wsUrl);
@@ -119,7 +115,6 @@ class TradingApp {
         };
     }
 
-    // Fiyat Formatlama (Crypto ve FX için hassas ayar)
     formatPrice(price) {
         if (price === undefined || price === null) return 'Bekleniyor';
         if (typeof price !== 'number') return price;
@@ -130,7 +125,6 @@ class TradingApp {
         return price.toFixed(2);
     }
 
-    // Gerçek fiyat güncellemesi
     handlePriceUpdate(data) {
         const symbol = data.symbol;
         this.prices[symbol] = data;
@@ -143,10 +137,8 @@ class TradingApp {
             const newPrice = parseFloat(data.price);
             const currencySuffix = data.currency === 'USD' ? ' (USD)' : ' (TL)';
 
-            // Fiyatı formatla + Suffix ekle
             priceEl.innerText = this.formatPrice(newPrice) + currencySuffix;
 
-            // Flash animasyonu
             if (newPrice > oldPrice) {
                 this.flashElement(priceEl, '#48bb78');
             } else if (newPrice < oldPrice) {
@@ -219,7 +211,7 @@ class TradingApp {
     }
 
     setupEventListeners() {
-        // Filter Click
+
         document.getElementById('marketFilters').addEventListener('click', (e) => {
             if (e.target.classList.contains('filter-chip')) {
                 document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
@@ -229,14 +221,11 @@ class TradingApp {
             }
         });
 
-        // Search
         document.getElementById('symbolSearch').addEventListener('input', (e) => {
             this.searchQuery = e.target.value;
             this.renderList();
         });
 
-        // Row Click - Devre dışı (sadece veri akışı)
-        // Chart açılma özelliği kaldırıldı - kullanıcı isteği
     }
 }
 

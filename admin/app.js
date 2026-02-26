@@ -1,4 +1,4 @@
-// --- API Wrapper ---
+
 async function apiFetch(url, options = {}) {
     const res = await fetch(url, options);
     if (res.status === 401) {
@@ -8,14 +8,12 @@ async function apiFetch(url, options = {}) {
     return res;
 }
 
-// --- Load Config ---
 async function loadConfig() {
     try {
         const res = await apiFetch(`/api/admin/config`);
         if (!res) return;
         config = await res.json();
 
-        // Ticker Cache'i de alıp config'e gömelim gösterim için
         try {
             const cacheRes = await apiFetch('/api/admin/ticker-cache');
             const cacheData = await cacheRes.json();
@@ -27,7 +25,6 @@ async function loadConfig() {
             }
         } catch (e) { }
 
-        // Update Metrics
         if (config.metrics) {
             document.getElementById('wsClientsMetric').innerText = config.metrics.wsClients;
             document.getElementById('pwStatusMetric').innerText = config.metrics.playwrightStatus;
@@ -48,7 +45,6 @@ async function loadConfig() {
     }
 }
 
-// Auto-refresh metrics every 30 seconds
 setInterval(() => {
     if (document.visibilityState === 'visible') {
         loadConfig();
@@ -67,7 +63,6 @@ async function logout() {
     }
 }
 
-// --- Categories Management ---
 function renderCategories() {
     const list = document.getElementById('categoryList');
     const newCatSelect = document.getElementById('newCategory');
@@ -80,7 +75,7 @@ function renderCategories() {
     const categories = config.categories || [];
 
     categories.forEach(cat => {
-        // Dropdown additions
+
         const optNew = document.createElement('option');
         optNew.value = cat;
         optNew.innerHTML = cat;
@@ -92,7 +87,6 @@ function renderCategories() {
         optEdit.innerHTML = cat;
         editCatSelect.appendChild(optEdit);
 
-        // UI Tag List addition
         const div = document.createElement('div');
         div.style.cssText = 'background: #0f172a; padding: 5px 15px; border-radius: 20px; border: 1px solid #334155; display: flex; align-items: center; gap: 8px; font-size: 14px;';
         div.innerHTML = `
@@ -125,14 +119,12 @@ async function deleteCategory(name) {
     await loadConfig();
 }
 
-// --- Render Table ---
 function renderTable() {
     const tbody = document.getElementById('symbolTableBody');
     tbody.innerHTML = '';
 
     const query = document.getElementById('monitorSearch').value.toLowerCase();
 
-    // Config'ten gelenler: artık hem sistem hem custom semboller, hepsi {name, category, isCustom}
     let allSymbols = config.symbols || [];
 
     allSymbols.forEach(symObj => {
@@ -165,13 +157,11 @@ function renderTable() {
             }
         }
 
-        // Renk: custom = mavi, sistem = yeşil
         const catColor = isCustom ? '#3b82f6' : '#10b981';
 
         const tr = document.createElement('tr');
         tr.id = `row-${sym}`;
 
-        // Cache'de bu sembolün TradingView ticker'ı var mı?
         const tvTicker = config.tickerCache ? config.tickerCache[sym] : '...';
 
         tr.innerHTML = `
@@ -202,8 +192,6 @@ function renderTable() {
     document.getElementById('selectAllCheckbox').checked = false;
     updateSelectButtons();
 }
-
-// --- Actions ---
 
 async function updateDelay() {
     const delay = document.getElementById('globalDelay').value;
@@ -242,7 +230,6 @@ async function togglePauseSymbol(symbol, paused) {
     await loadConfig();
 }
 
-// --- Modal Logic ---
 let currentEditingSymbol = null;
 let isBulkEdit = false;
 
@@ -270,7 +257,6 @@ function openEditModal(symbol, category, isCustom = false) {
         document.getElementById('multiplierValue').value = '1.00';
     }
 
-    // Sil butonu: sadece admin'in eklediği (custom) sembollerde ve tekli düzenlemede görünsün
     const deleteBtn = document.getElementById('deleteSymbolBtn');
     if (isCustom) {
         deleteBtn.style.display = 'block';
@@ -290,7 +276,7 @@ function openBulkEditModal() {
     document.getElementById('modalTitle').innerText = `Toplu Düzenle (${checkedBoxes.length} Sembol)`;
     document.getElementById('editModal').style.display = 'block';
 
-    document.getElementById('categoryInputGroup').style.display = 'none'; // Bulk editte kategoriyi gizle
+    document.getElementById('categoryInputGroup').style.display = 'none';
     document.getElementById('overrideType').value = 'none';
     document.getElementById('fixedPrice').value = '';
     document.getElementById('multiplierValue').value = '1.00';
@@ -318,10 +304,10 @@ function closeModal() {
 
 function toggleSelectAll() {
     const isChecked = document.getElementById('selectAllCheckbox').checked;
-    // Sadece görünür durumdaki (ve checkbox olan) satırları seç
+
     const checkboxes = document.querySelectorAll('.symbol-checkbox');
     checkboxes.forEach(cb => {
-        // tr eğer display:none değilse seçimi uygula (arama filtresinde görünmüyorsa seçme)
+
         if (cb.closest('tr').style.display !== 'none') {
             cb.checked = isChecked;
         }
@@ -402,10 +388,9 @@ async function saveOverride() {
         document.getElementById('selectAllCheckbox').checked = false;
 
     } else {
-        // Individual edit: handle both override and category changes
+
         payload.symbol = currentEditingSymbol;
 
-        // 1. Kategoriyi Güncelle
         const newCategory = document.getElementById('editCategory').value;
         await apiFetch(`/api/admin/symbol/category`, {
             method: 'POST',
@@ -413,7 +398,6 @@ async function saveOverride() {
             body: JSON.stringify({ symbol: currentEditingSymbol, category: newCategory })
         });
 
-        // 2. Override Güncelle
         await apiFetch(`/api/admin/override`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -426,13 +410,10 @@ async function saveOverride() {
     alert('Ayarlar kaydedildi!');
 }
 
-// --- Init ---
 loadConfig();
 
-// --- WebSocket Connection ---
-// Secure connection with API Key
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${wsProtocol}//${window.location.host}?token=EsMenkul_Secret_2026`);
+const ws = new WebSocket(`${wsProtocol}
 
 ws.onopen = () => {
     console.log('✅ WebSocket Bağlantısı Kuruldu');
@@ -462,7 +443,6 @@ function updatePriceCell(symbol, price) {
             const oldPriceText = priceCell.innerText.replace(' TL', '');
             const oldPrice = parseFloat(oldPriceText);
 
-            // Dynamic Decimals: Small numbers need more precision
             let formattedPrice;
             if (price < 0.001) formattedPrice = price.toFixed(8);
             else if (price < 1) formattedPrice = price.toFixed(4);
@@ -471,7 +451,7 @@ function updatePriceCell(symbol, price) {
             priceCell.innerText = `${formattedPrice} TL`;
 
             if (!isNaN(oldPrice) && oldPrice !== price) {
-                priceCell.style.color = price > oldPrice ? '#4ade80' : '#f87171'; // Green/Red
+                priceCell.style.color = price > oldPrice ? '#4ade80' : '#f87171';
                 setTimeout(() => priceCell.style.color = 'white', 500);
             }
         }

@@ -26,41 +26,36 @@ const API_SECRET = 'EsMenkul_Secret_2026';
 app.use(cors());
 app.use(bodyParser.json());
 
-// Session Configuration
 app.use(session({
     secret: process.env.SESSION_SECRET || 'EsMenkul_Secure_2026_Session_Secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, // Set to true if using HTTPS
+        secure: false,
         httpOnly: true,
-        maxAge: 1000 * 60 * 60 * 24 // 24 hours
+        maxAge: 1000 * 60 * 60 * 24
     }
 }));
 
-// Rate Limiting for Auth
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // Limit each IP to 10 login attempts per window
+    windowMs: 15 * 60 * 1000,
+    max: 10,
     message: { success: false, message: 'Çok fazla giriş denemesi. Lütfen 15 dakika sonra tekrar deneyin.' }
 });
 
-// Authentication Middleware
 const isAuthenticated = (req, res, next) => {
-    // Session kontrolü
+
     if (req.session.authenticated) {
         return next();
     }
 
-    // Eğer zaten login sayfasındaysa veya API'ler üzerinden check/login/logout yapıyorsa izin ver
     const publicPaths = ['/login.html', '/auth/login', '/auth/check', '/auth/logout'];
     if (publicPaths.includes(req.path)) {
         return next();
     }
 
-    // API istekleri için 401 dön, düz sayfalar için redirect et
     if (req.originalUrl.startsWith('/api/')) {
-        // Ama public API'leri dışarıda tut
+
         const publicApis = ['/api/public-symbols', '/api/prices'];
         if (publicApis.some(p => req.originalUrl.startsWith(p))) {
             return next();
@@ -71,10 +66,6 @@ const isAuthenticated = (req, res, next) => {
     res.redirect('/admin/login.html');
 };
 
-// --- ROUTES ---
-
-// 1. PUBLIC API'ler (Middleware'den önce gelsin ki takılmasın)
-// 1. PUBLIC API'ler (Middleware'den önce gelsin ki takılmasın)
 app.get('/api/public-symbols', async (req, res) => {
     try {
         let config = await ConfigModel.findOne({ key: 'global' });
@@ -97,10 +88,8 @@ app.get('/api/prices', (req, res) => {
     res.json(latestPrices);
 });
 
-// 2. AUTH API'leri (Giriş için şart)
 app.use('/api/auth', authRoutes);
 
-// 3. ADMIN / PROTECTED
 app.get('/admin/login.html', (req, res) => {
     res.sendFile(path.join(__dirname, '../admin/login.html'));
 });
@@ -108,7 +97,6 @@ app.get('/admin/login.html', (req, res) => {
 app.use('/admin', isAuthenticated, express.static(path.join(__dirname, '../admin')));
 app.use('/api/admin', isAuthenticated, adminRoutes);
 
-// 4. GENERAL STATIC
 app.use(express.static(path.join(__dirname, '../'), { index: 'index.html' }));
 
 let browser = null;
@@ -121,7 +109,6 @@ let globalDelay = 0;
 let priceOverrides = {};
 let pausedSymbols = new Set();
 
-// Metrics Helper
 app.locals.getMetrics = () => {
     let wsCount = 0;
     if (app.locals.wss) wsCount = app.locals.wss.clients.size;
@@ -132,17 +119,15 @@ app.locals.getMetrics = () => {
     };
 };
 
-// MongoDB Bağlantısı ve Sunucu Başlatma
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBEw7vST9gH6@cluster0.z2s3t.mongodb.net/karisik?retryWrites=true&w=majority&appName=Cluster0')
     .then(async () => {
         console.log('✅ MongoDB Bağlantısı Başarılı');
 
-        // Uygulama başlarken DB'den eski ayarları al
         const config = await ConfigModel.findOne({ key: 'global' });
         if (config) {
             if (config.delay) globalDelay = config.delay;
             if (config.overrides) {
-                // Mongoose map to plain JS object
+
                 priceOverrides = Object.fromEntries(config.overrides.entries());
             }
             if (config.symbols) {
@@ -171,7 +156,6 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
             }
         });
 
-        // WebSocket istemci yönetimi (Price Broadcast) loop'da aşağıda.
         wss.on('connection', (ws) => {
             Object.keys(latestPrices).forEach(sym => {
                 const p = latestPrices[sym];
@@ -181,7 +165,6 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
             });
         });
 
-        // Broadcast'i globale attach edelim (Aşağıdaki processRawData kullanabilsin diye)
         app.locals.wss = wss;
 
     })
@@ -189,25 +172,20 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
         console.error('❌ MongoDB Bağlantı Hatası:', e);
     });
 
-// Admin Hooks
 app.locals.addSymbolToStream = async (symbol, category = 'CUSTOM') => {
     console.log(`🆕 Yeni Sembol Eklendi: ${symbol} (Kategori: ${category})`);
 
-    // Ham ismi TradingView formatına çevir (ASYNC - otomatik arama yapar)
     const ticker = await resolveSymbolTicker(symbol, category);
     if (!ticker) { console.log(`⚠️ Ticker dönüştürülemedi: ${symbol}`); return; }
     console.log(`📡 TradingView Ticker: ${ticker}`);
 
-    // Reverse mapping'e ekle
     if (!reverseMapping[ticker]) reverseMapping[ticker] = [];
     if (!reverseMapping[ticker].includes(symbol)) reverseMapping[ticker].push(symbol);
 
-    // Aktif listeye ekle (zaten yoksa)
     if (!activeSymbols.includes(ticker)) {
         activeSymbols.push(ticker);
     }
 
-    // Mevcut WS oturumuna inject etmeyi dene; başarısız olursa reconnect yap
     if (page) {
         page.evaluate(({ tvTicker, allSymbols }) => {
             try {
@@ -265,19 +243,18 @@ app.locals.updateDelay = (delay) => {
 };
 
 app.locals.getActiveSymbols = () => {
-    // Return all symbols being monitored (simplified list)
+
     return activeSymbols.map(s => {
-        // Reverse map if possible for clean names
+
         const clean = (reverseMapping[s] && reverseMapping[s].length > 0) ? reverseMapping[s][0] : s.split(':').pop();
         return clean;
     });
 };
 
-// Admin panelinin tüm kategorilere erişebilmesi için
 app.locals.getSymbolsData = () => symbolsData;
 
 const symbolMapping = {
-    // ENDEKSLER (TVC her zaman veri verir)
+
     'XU100': 'BIST:XU100',
     'XU030': 'BIST:XU030',
     'XBANK': 'BIST:XBANK',
@@ -294,7 +271,6 @@ const symbolMapping = {
     'HSI': 'TVC:HSI',
     'SZSE': 'SZSE:399001',
 
-    // EMTIA (TL BAZLI OLANLARI SEÇİYORUZ)
     'BRENT': 'TVC:UKOIL',
     'USOIL': 'TVC:USOIL',
     'NG1!': 'NYMEX:NG1!',
@@ -313,7 +289,6 @@ const symbolMapping = {
     'XAGTRY': 'FX_IDC:XAGTRY',
     'GLDGR': 'FX_IDC:XAUTRYG',
 
-    // BIST ÖZEL
     'TEKFEN': 'BIST:TKFEN',
     'KOZAA': 'BIST:KOZAA',
     'BEKO': 'BIST:ARCLK',
@@ -326,7 +301,6 @@ const nyseStocks = [
     'COP', 'SLB', 'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'VZ', 'T', 'ORCL', 'CRM'
 ];
 
-// Popüler kripto coinlerin temel listesi (borsa algısı için)
 const knownCryptos = new Set([
     'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE', 'SHIB', 'DOT', 'LINK', 'TRX', 'POL', 'LTC',
     'BCH', 'UNI', 'XLM', 'ATOM', 'ETC', 'FIL', 'HBAR', 'APT', 'ARB', 'OP', 'INJ', 'RENDER', 'GRT', 'STX',
@@ -337,7 +311,6 @@ const knownCryptos = new Set([
     'NANO', 'ZEC', 'DASH', 'XMR', 'DCR', 'DGB', 'RVN', 'KMD', 'VTC', 'BTG', 'WAVES', 'LSK', 'STEEM', 'ARDR'
 ]);
 
-// Bilinen ABD borsası hisseleri
 const nasdaqStocks = new Set([
     'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'TSLA', 'META', 'NFLX', 'AMD', 'INTC', 'CSCO', 'ADBE', 'PYPL',
     'CRM', 'ORCL', 'QCOM', 'TXN', 'AVGO', 'MU', 'AMAT', 'LRCX', 'KLAC', 'MRVL', 'NXPI', 'SWKS', 'ZBRA',
@@ -349,15 +322,12 @@ const nyseStocksSet = new Set([
     'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'TMUS', 'VZ', 'T', 'BRK.B', 'JPM', 'HD', 'LOW', 'TJX', 'BABA'
 ]);
 
-// Hızlı/senkron fallback: bilinen kalıplardan tahmin et
 function quickGuessSymbol(sym, category) {
     if (!sym) return null;
     if (sym.includes(':')) return sym.toUpperCase();
 
-    // 1. Sabit mapping
     if (symbolMapping[sym]) return symbolMapping[sym];
 
-    // 2. Kategoriye göre
     if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
     if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
 
@@ -372,7 +342,6 @@ function quickGuessSymbol(sym, category) {
         return `NASDAQ:${sym}`;
     }
 
-    // Kripto kalıpları
     const cryptoSuffixes = ['USDT', 'USDC', 'USD', 'TRY', 'BTC', 'ETH', 'BNB'];
     for (const suffix of cryptoSuffixes) {
         if (sym.endsWith(suffix)) {
@@ -386,31 +355,25 @@ function quickGuessSymbol(sym, category) {
     if (nyseStocksSet.has(sym)) return `NYSE:${sym}`;
     if (knownCryptos.has(sym)) return `BINANCE:${sym}USDT`;
 
-    // Bilinmeyen → null döndür, async resolver devreye girecek
     return null;
 }
 
-// Senkron wrapper (eski kodla uyumluluk için - zaten bilinen semboller için)
 function getSymbolForCategory(symbol, category) {
     if (!symbol) return null;
     const sym = symbol.toUpperCase().trim();
-    return quickGuessSymbol(sym, category) || `BIST:${sym}`; // ultimate fallback
+    return quickGuessSymbol(sym, category) || `BIST:${sym}`;
 }
 
-// Async versiyon: bilinmeyenler için TradingView araması yapar
 async function resolveSymbolTicker(symbol, category) {
     if (!symbol) return null;
     const sym = symbol.toUpperCase().trim();
 
-    // Önce hızlı guess dene
     const quick = quickGuessSymbol(sym, category);
     if (quick) return quick;
 
-    // Bilmiyoruz → TradingView'de ara
     const resolved = await resolveSymbol(sym, category);
     if (resolved) return resolved;
 
-    // Son çare fallback
     console.log(`⚠️ ${sym} çözümlenemedi, BIST fallback kullanılıyor`);
     return `BIST:${sym}`;
 }
@@ -426,13 +389,11 @@ async function prepareAllSymbols() {
 
     addMapping('FX_IDC:USDTRY', 'USDTRY');
 
-    // 1. Sabit Mapped Sembolleri Ekle
     Object.entries(symbolMapping).forEach(([key, value]) => {
         formattedSymbols.push(value);
         addMapping(value, key);
     });
 
-    // 2. symbols.js'deki her şeyi kategorisine göre ekle (senkron - bilinen semboller)
     Object.entries(symbolsData).forEach(([category, symbols]) => {
         symbols.forEach(sym => {
             const cleanSym = sym.replace(/\s*\/\/.*/, '').trim();
@@ -444,11 +405,10 @@ async function prepareAllSymbols() {
         });
     });
 
-    // 3. Admin'den gelenleri ekle - ASYNC resolver ile
     try {
         const config = await ConfigModel.findOne({ key: 'global' });
         if (config && config.symbols) {
-            // Paralel olarak tüm custom sembolleri resolve et
+
             const resolvePromises = config.symbols.map(async (s) => {
                 const sym = typeof s === 'string' ? s : s.name;
                 const cat = typeof s === 'string' ? 'CUSTOM' : (s.category || 'CUSTOM');
@@ -489,7 +449,6 @@ async function startTradingViewConnection() {
 
     page = await context.newPage();
 
-    // Safety check for already registered functions
     try { await page.exposeFunction('onDataReceived', (data) => processRawData(data)); } catch (e) { }
     try { await page.exposeFunction('onBrowserReloadRequest', () => { setTimeout(startTradingViewConnection, 5000); }); } catch (e) { }
 
@@ -506,7 +465,7 @@ async function startTradingViewConnection() {
                     return `~m~${json.length}~m~${json}`;
                 };
                 const sessionId = 'qs_' + Math.random().toString(36).substring(7);
-                // Session ID'yi global olarak sakla (yeni sembol enjeksiyonu için)
+
                 window._tvSessionId = sessionId;
                 ws.send(constructMessage('quote_create_session', [sessionId]));
                 ws.send(constructMessage('quote_set_fields', [sessionId, 'lp', 'ch', 'chp', 'status', 'currency_code', 'original_name']));
@@ -558,7 +517,6 @@ Object.entries(symbolMapping).forEach(([key, value]) => {
 function processRawData(rawData) {
     lastDataTime = Date.now();
 
-    // Global Delay implementation
     if (globalDelay > 0) {
         setTimeout(() => {
             _processDataInternal(rawData);
@@ -591,7 +549,7 @@ function _processDataInternal(rawData) {
                 }
 
                 mappedSymbols.forEach(symbol => {
-                    // Normalize BIST specials
+
                     if (symbol === 'TKFEN') symbol = 'TEKFEN';
                     if (symbol === 'ARCLK') symbol = 'BEKO';
                     if (symbol === 'XUSIN') symbol = 'XSINA';
@@ -601,23 +559,21 @@ function _processDataInternal(rawData) {
                     let finalPrice = values.lp;
                     if (tvTicker === 'FX_IDC:USDTRY' && values.lp) {
                         usdTryRate = values.lp;
-                        // Force USDTRY symbol if we are processing this ticker
+
                         if (!mappedSymbols.includes('USDTRY')) {
-                            // This ensures USDTRY stays updated even if not explicitly mapped
+
                             symbol = 'USDTRY';
                         }
                     }
 
                     let currency = values.currency_code || (tvTicker.includes('TRY') ? 'TRY' : 'USD');
 
-                    // 🛑 PAUSED KONTROLÜ
                     if (pausedSymbols.has(symbol)) return;
 
-                    // 🛑 OVERRIDE KONTROLÜ
                     if (priceOverrides[symbol]) {
                         const override = priceOverrides[symbol];
                         if (override.expiresAt && Date.now() > new Date(override.expiresAt).getTime()) {
-                            // Süresi dolmuş, yoksay
+
                         } else {
                             if (override.type === 'fixed') {
                                 finalPrice = override.value;
@@ -648,13 +604,9 @@ function _processDataInternal(rawData) {
                             app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(broadcastMsg); });
                         }
 
-                        // XRPUSD and similar crypto quick-fixes: if we have "XRPUSDT" internal mapped, 
-                        // also send out an update for "XRPUSD" since user entered it that way.
-                        // Same for any symbol that has a trailing 'T' but the user might have entered the generic USD form.
                         if (symbol.endsWith('USDT')) {
                             const withoutT = symbol.slice(0, -1);
-                            // If withoutT is in reverseMapping or activeSymbols, broadcast it too.
-                            // To be safe, just broadcast the synthetic 'withoutT' version as well so it hits the frontend either way.
+
                             const broadcastMsgAlt = JSON.stringify({
                                 type: 'price_update',
                                 data: {
