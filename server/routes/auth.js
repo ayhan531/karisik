@@ -3,8 +3,6 @@ import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
-// Admin credentials (In a real production app, use process.env)
-// For this implementation, we will check against these values
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS_HASH = process.env.ADMIN_PASS_HASH || '$2b$10$I01i/asMuh55MNS.Da5I/OgflUaXsSEwCCOkABSGP2W1O0g6Z8T/C'; // Hash for 'admin123'
 

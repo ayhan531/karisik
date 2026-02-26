@@ -1,5 +1,3 @@
-// TradingView Cookie Configuration
-// GÜNCEL GERÇEİ COOKIE'LER (Authentication ile)
 
 export const TRADINGVIEW_COOKIES = {
     __eoi: "ID=28f9a975a18185be:T=1770157793:RT=1770157793:S=AA-AfjZCkeY98mvbBJryqmxS4L-G",
@@ -17,7 +15,7 @@ export const TRADINGVIEW_COOKIES = {
     tv_ecuid: "5f98ac9a-cd0a-4198-bbde-e643744083fc"
 };
 
-// Tüm cookie'leri string formatına çevir
+
 export function getCookieString() {
     return Object.entries(TRADINGVIEW_COOKIES)
         .map(([key, value]) => `${key}=${value}`)
