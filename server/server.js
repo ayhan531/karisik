@@ -104,12 +104,12 @@ async function prepareAllSymbols() {
     const config = await ConfigModel.findOne({ key: 'global' });
     if (config && config.symbols) {
         for (const sObj of config.symbols) {
-            const sName = typeof sObj === 'string' ? sObj : sObj.name;
+            const sName = (typeof sObj === 'string' ? sObj : sObj.name).toUpperCase().trim();
             const sCat = typeof sObj === 'string' ? 'CUSTOM' : (sObj.category || 'CUSTOM');
             const ticker = await resolveSymbolTicker(sName, sCat);
             if (ticker) {
                 if (!formattedSymbols.includes(ticker)) formattedSymbols.push(ticker);
-                addMap(ticker, sName.toUpperCase());
+                addMap(ticker, sName);
             }
         }
     }
@@ -166,13 +166,14 @@ function processRawData(rawData) {
                 const data = msg.p[1], ticker = data.n, values = data.v;
                 if (!ticker || !values) continue;
                 const cleanTicker = ticker.split(',')[0].trim();
-                const mapped = reverseMapping[cleanTicker] || [cleanTicker.split(':').pop()];
+                const mapped = reverseMapping[cleanTicker] || [cleanTicker.split(':').pop().toUpperCase()];
                 mapped.forEach(sym => {
-                    if (pausedSymbols.has(sym)) return;
+                    const s = sym.toUpperCase().trim();
+                    if (pausedSymbols.has(s)) return;
                     let price = values.lp;
-                    if (priceOverrides[sym]) price = priceOverrides[sym].type === 'fixed' ? priceOverrides[sym].value : price * priceOverrides[sym].value;
-                    latestPrices[sym] = { price, changePercent: values.chp, currency: values.currency_code || 'USD' };
-                    const out = JSON.stringify({ type: 'price_update', data: { symbol: sym, price, changePercent: values.chp } });
+                    if (priceOverrides[s]) price = priceOverrides[s].type === 'fixed' ? priceOverrides[s].value : price * priceOverrides[s].value;
+                    latestPrices[s] = { price, changePercent: values.chp, currency: values.currency_code || 'USD' };
+                    const out = JSON.stringify({ type: 'price_update', data: { symbol: s, price, changePercent: values.chp } });
                     if (app.locals.wss) app.locals.wss.clients.forEach(c => { if (c.readyState === 1) c.send(out); });
                 });
             }
