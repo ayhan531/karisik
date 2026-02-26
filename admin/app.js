@@ -15,6 +15,18 @@ async function loadConfig() {
         if (!res) return;
         config = await res.json();
 
+        // Ticker Cache'i de alıp config'e gömelim gösterim için
+        try {
+            const cacheRes = await apiFetch('/api/admin/ticker-cache');
+            const cacheData = await cacheRes.json();
+            if (cacheData.success) {
+                config.tickerCache = {};
+                (cacheData.cache || []).forEach(c => {
+                    config.tickerCache[c.symbol] = c.ticker;
+                });
+            }
+        } catch (e) { }
+
         // Update Metrics
         if (config.metrics) {
             document.getElementById('wsClientsMetric').innerText = config.metrics.wsClients;
@@ -158,12 +170,21 @@ function renderTable() {
 
         const tr = document.createElement('tr');
         tr.id = `row-${sym}`;
+
+        // Cache'de bu sembolün TradingView ticker'ı var mı?
+        const tvTicker = config.tickerCache ? config.tickerCache[sym] : '...';
+
         tr.innerHTML = `
             <td data-label="Seç">
                 <input type="checkbox" class="symbol-checkbox" value="${sym}" onclick="updateSelectButtons()">
             </td>
-            <td data-label="Sembol">${sym}</td>
+            <td data-label="Sembol">
+                <strong>${sym}</strong>
+            </td>
             <td data-label="Kategori" style="color: ${catColor}; font-size: 0.85em;">${category}</td>
+            <td data-label="TV Ticker" style="font-family: monospace; color: #94a3b8; font-size: 0.8em;">
+                ${tvTicker}
+            </td>
             <td data-label="Fiyat" class="price-cell">Bekleniyor...</td>
             <td data-label="Durum">${statusHtml}</td>
             <td data-label="Override">${overrideValue}</td>

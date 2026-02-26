@@ -1,5 +1,6 @@
 import express from 'express';
 import ConfigModel from '../models/Config.js';
+import { clearCache, listCache, manuallySetTicker } from '../symbolResolver.js';
 
 const router = express.Router();
 
@@ -327,6 +328,45 @@ router.post('/categories', async (req, res) => {
 
     await saveConfig(config);
     res.json({ success: true, categories: config.categories });
+});
+
+// 11. Ticker Cache Yönetimi
+
+// Tüm cache içeriğini listele
+router.get('/ticker-cache', async (req, res) => {
+    try {
+        const cache = await listCache();
+        res.json({ success: true, cache });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Belirli sembol için ticker'ı manuel set et
+router.post('/ticker-cache/set', async (req, res) => {
+    const { symbol, ticker } = req.body;
+    if (!symbol || !ticker) return res.status(400).json({ error: 'symbol ve ticker gerekli' });
+    try {
+        await manuallySetTicker(symbol, ticker);
+        // Yeni ticker ile stream'e ekle
+        if (req.app.locals.addSymbolToStream) {
+            req.app.locals.addSymbolToStream(symbol);
+        }
+        res.json({ success: true, symbol, ticker });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Cache temizle (sembol bazlı veya tümü)
+router.delete('/ticker-cache', async (req, res) => {
+    const { symbol } = req.query;
+    try {
+        await clearCache(symbol || null);
+        res.json({ success: true, cleared: symbol || 'all' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 export default router;

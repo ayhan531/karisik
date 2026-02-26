@@ -9,10 +9,12 @@ import session from 'express-session';
 import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose';
 import ConfigModel from './models/Config.js';
+import TickerCache from './models/TickerCache.js';
 import adminRoutes from './routes/admin.js';
 import authRoutes from './routes/auth.js';
 import fs from 'fs';
 import { symbolsData } from '../symbols.js';
+import { resolveSymbol, clearCache, listCache, manuallySetTicker } from './symbolResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -188,11 +190,11 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://esmenkuladmin:p0sYDBE
     });
 
 // Admin Hooks
-app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
+app.locals.addSymbolToStream = async (symbol, category = 'CUSTOM') => {
     console.log(`🆕 Yeni Sembol Eklendi: ${symbol} (Kategori: ${category})`);
 
-    // Ham ismi TradingView formatına çevir
-    const ticker = getSymbolForCategory(symbol, category);
+    // Ham ismi TradingView formatına çevir (ASYNC - otomatik arama yapar)
+    const ticker = await resolveSymbolTicker(symbol, category);
     if (!ticker) { console.log(`⚠️ Ticker dönüştürülemedi: ${symbol}`); return; }
     console.log(`📡 TradingView Ticker: ${ticker}`);
 
@@ -216,13 +218,7 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
                     };
 
                     const sessionId = window._tvSessionId;
-
-                    // Sembol zaten eklenmiş mi kontrol et ama her ihtimale karşı tekrar yolla (TV bazen yutabiliyor)
-                    // Sembolü ekle
                     window.tvSocket.send(constructMessage('quote_add_symbols', [sessionId, tvTicker]));
-
-                    // Tüm listeyi (yeni sembol dahil) fast stream'e al. 
-                    // Bu, TradingView'in sadece tek bir snapshot yollayıp durmasını engeller.
                     window.tvSocket.send(constructMessage('quote_fast_symbols', [sessionId, ...allSymbols]));
 
                     return true;
@@ -236,7 +232,7 @@ app.locals.addSymbolToStream = (symbol, category = 'CUSTOM') => {
                 console.log(`⚠️ Anlık enjeksiyon başarısız (${ticker}), reconnect başlatılıyor...`);
                 setTimeout(() => startTradingViewConnection(), 1000);
             } else {
-                console.log(`✅ Sembol canlı enjekte edildi ve fast stream güncellendi: ${ticker}`);
+                console.log(`✅ Sembol canlı enjekte edildi: ${ticker}`);
             }
         }).catch(() => {
             setTimeout(() => startTradingViewConnection(), 1000);
@@ -353,29 +349,21 @@ const nyseStocksSet = new Set([
     'GE', 'F', 'GM', 'TM', 'HMC', 'SONY', 'TMUS', 'VZ', 'T', 'BRK.B', 'JPM', 'HD', 'LOW', 'TJX', 'BABA'
 ]);
 
-function getSymbolForCategory(symbol, category) {
-    if (!symbol) return null;
+// Hızlı/senkron fallback: bilinen kalıplardan tahmin et
+function quickGuessSymbol(sym, category) {
+    if (!sym) return null;
+    if (sym.includes(':')) return sym.toUpperCase();
 
-    // Eğer sembol zaten exchange prefix içeriyorsa direkt döndür (örn: BINANCE:BTCUSDT)
-    if (symbol.includes(':')) {
-        return symbol.toUpperCase();
-    }
-
-    const sym = symbol.toUpperCase().trim();
-
-    // 1. Sabit mapping'de var mı?
+    // 1. Sabit mapping
     if (symbolMapping[sym]) return symbolMapping[sym];
 
-    // 2. Kategoriye göre spesifik işlem
+    // 2. Kategoriye göre
     if (category === 'BORSA ISTANBUL') return `BIST:${sym}`;
     if (category === 'EXCHANGE') return `FX_IDC:${sym}`;
 
     if (category === 'KRIPTO') {
-        if (sym.endsWith('USDT')) return `BINANCE:${sym}`;
-        if (sym.endsWith('TRY')) return `BINANCE:${sym}`;
+        if (sym.endsWith('USDT') || sym.endsWith('TRY')) return `BINANCE:${sym}`;
         if (sym.endsWith('USD')) return `BINANCE:${sym.slice(0, -3)}USDT`;
-        if (sym.includes('USD')) return `BINANCE:${sym.replace('USD', 'USDT')}`;
-        if (sym.endsWith('BTC')) return `BINANCE:${sym}`;
         return `BINANCE:${sym}USDT`;
     }
 
@@ -384,34 +372,47 @@ function getSymbolForCategory(symbol, category) {
         return `NASDAQ:${sym}`;
     }
 
-    // 3. Kategori yoksa (CUSTOM / DİĞER) akıllı algılama:
-
-    // a) Dolar/TL çiftine benziyor mu? (örn: BTCUSD, ETHUSD, BTCUSDT, BTCTRY, ETHTRY)
-    const cryptoSuffixes = ['USDT', 'USDC', 'USD', 'TRY', 'BTC', 'ETH', 'BNB', 'BUSD'];
+    // Kripto kalıpları
+    const cryptoSuffixes = ['USDT', 'USDC', 'USD', 'TRY', 'BTC', 'ETH', 'BNB'];
     for (const suffix of cryptoSuffixes) {
         if (sym.endsWith(suffix)) {
             const base = sym.slice(0, -suffix.length);
             if (knownCryptos.has(base)) {
-                if (suffix === 'USD') return `BINANCE:${base}USDT`;
-                return `BINANCE:${sym}`;
+                return suffix === 'USD' ? `BINANCE:${base}USDT` : `BINANCE:${sym}`;
             }
         }
     }
-
-    // b) ABD hissesi mi?
     if (nasdaqStocks.has(sym)) return `NASDAQ:${sym}`;
     if (nyseStocksSet.has(sym)) return `NYSE:${sym}`;
-
-    // c) Kripto coin ismi mi? (USDT çifti dene)
     if (knownCryptos.has(sym)) return `BINANCE:${sym}USDT`;
 
-    // d) Kısa harf kodu - BIST hissesi olabilir
-    if (sym.length >= 3 && sym.length <= 6 && /^[A-Z]+$/.test(sym)) {
-        return `BIST:${sym}`;
-    }
+    // Bilinmeyen → null döndür, async resolver devreye girecek
+    return null;
+}
 
-    // e) TVC ile dene (Genel endeksler, emtialar)
-    return `TVC:${sym}`;
+// Senkron wrapper (eski kodla uyumluluk için - zaten bilinen semboller için)
+function getSymbolForCategory(symbol, category) {
+    if (!symbol) return null;
+    const sym = symbol.toUpperCase().trim();
+    return quickGuessSymbol(sym, category) || `BIST:${sym}`; // ultimate fallback
+}
+
+// Async versiyon: bilinmeyenler için TradingView araması yapar
+async function resolveSymbolTicker(symbol, category) {
+    if (!symbol) return null;
+    const sym = symbol.toUpperCase().trim();
+
+    // Önce hızlı guess dene
+    const quick = quickGuessSymbol(sym, category);
+    if (quick) return quick;
+
+    // Bilmiyoruz → TradingView'de ara
+    const resolved = await resolveSymbol(sym, category);
+    if (resolved) return resolved;
+
+    // Son çare fallback
+    console.log(`⚠️ ${sym} çözümlenemedi, BIST fallback kullanılıyor`);
+    return `BIST:${sym}`;
 }
 
 async function prepareAllSymbols() {
@@ -431,30 +432,39 @@ async function prepareAllSymbols() {
         addMapping(value, key);
     });
 
-    // 2. symbols.js'deki her şeyi kategorisine göre ekle
+    // 2. symbols.js'deki her şeyi kategorisine göre ekle (senkron - bilinen semboller)
     Object.entries(symbolsData).forEach(([category, symbols]) => {
         symbols.forEach(sym => {
-            const ticker = getSymbolForCategory(sym, category);
+            const cleanSym = sym.replace(/\s*\/\/.*/, '').trim();
+            const ticker = getSymbolForCategory(cleanSym, category);
             if (!formattedSymbols.includes(ticker)) {
                 formattedSymbols.push(ticker);
             }
-            addMapping(ticker, sym);
+            addMapping(ticker, cleanSym);
         });
     });
 
-    // 3. Admin'den gelenleri ekle (Veritabanından)
+    // 3. Admin'den gelenleri ekle - ASYNC resolver ile
     try {
         const config = await ConfigModel.findOne({ key: 'global' });
         if (config && config.symbols) {
-            config.symbols.forEach(s => {
+            // Paralel olarak tüm custom sembolleri resolve et
+            const resolvePromises = config.symbols.map(async (s) => {
                 const sym = typeof s === 'string' ? s : s.name;
                 const cat = typeof s === 'string' ? 'CUSTOM' : (s.category || 'CUSTOM');
+                const ticker = await resolveSymbolTicker(sym, cat);
+                return { sym, ticker };
+            });
 
-                const ticker = getSymbolForCategory(sym, cat);
-                if (!formattedSymbols.includes(ticker)) {
-                    formattedSymbols.push(ticker);
+            const resolved = await Promise.allSettled(resolvePromises);
+            resolved.forEach(r => {
+                if (r.status === 'fulfilled' && r.value.ticker) {
+                    const { sym, ticker } = r.value;
+                    if (!formattedSymbols.includes(ticker)) {
+                        formattedSymbols.push(ticker);
+                    }
+                    addMapping(ticker, sym);
                 }
-                addMapping(ticker, sym);
             });
         }
     } catch (e) { console.error('Prepare custom symbols error:', e); }
